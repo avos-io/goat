@@ -11,6 +11,8 @@ import (
 	"time"
 
 	rpcheader "github.com/avos-io/grpc-websockets/gen"
+	"github.com/avos-io/grpc-websockets/internal/client"
+	"github.com/avos-io/grpc-websockets/internal/server"
 
 	"nhooyr.io/websocket"
 )
@@ -29,7 +31,7 @@ func (*TestService) Add(context.Context, *rpcheader.AddRequest) (*rpcheader.IntM
 }
 
 func main() {
-	srv := NewServer()
+	srv := server.NewServer()
 
 	ts := &TestService{}
 
@@ -67,7 +69,7 @@ func main() {
 		}
 		defer c.Close(websocket.StatusInternalError, "the sky is falling")
 
-		cci := NewWebsocketClientConn(c)
+		cci := client.NewWebsocketClientConn(c)
 		isc := rpcheader.NewIntServiceClient(cci)
 
 		log.Printf("about to add")

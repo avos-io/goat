@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"context"
@@ -51,7 +51,7 @@ type serviceInfo struct {
 	mdata       interface{}
 }
 
-type Server struct {
+type server struct {
 
 	// https://github.com/grpc/grpc-go/blob/9127159caf5a3879dad56b795938fde3bc0a7eaa/server.go#L137
 	services map[string]*serviceInfo // service name -> service info
@@ -71,7 +71,7 @@ func parseRawMethod(sm string) (string, string, error) {
 }
 
 // See grpc.ServiceRegistrar
-func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
+func (s *server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 	// FIXME: copy-paste from grpc code
 
 	// https://github.com/grpc/grpc-go/blob/9127159caf5a3879dad56b795938fde3bc0a7eaa/server.go#L668
@@ -104,8 +104,11 @@ func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 	s.services[sd.ServiceName] = info
 }
 
-func (s *Server) processUnaryRPC(srv *serviceInfo, md *grpc.MethodDesc, rpc *rpcheader.Rpc) *rpcheader.Rpc {
+func (s *server) processUnaryRPC(srv *serviceInfo, md *grpc.MethodDesc, rpc *rpcheader.Rpc) *rpcheader.Rpc {
 	origCtx := context.Background()
+
+	// The transport stream is needed for the grpc public functions SetHeader(), SetTrailer, etc.
+	// At the time of writing we don't use these ourselves so we don't need this immediately.
 	sts := &serverTransportStream{}
 	ctx := grpc.NewContextWithServerTransportStream(origCtx, sts)
 
@@ -140,7 +143,7 @@ func (s *Server) processUnaryRPC(srv *serviceInfo, md *grpc.MethodDesc, rpc *rpc
 			// Convert non-status application error to a status error with code
 			// Unknown, but handle context errors specifically.
 			appStatus = status.FromContextError(appErr)
-			appErr = appStatus.Err()
+			//appErr = appStatus.Err()
 		}
 
 		respStatus = &rpcheader.ResponseStatus{
@@ -169,11 +172,11 @@ func (s *Server) processUnaryRPC(srv *serviceInfo, md *grpc.MethodDesc, rpc *rpc
 	}
 }
 
-func (s *Server) processStreamingRPC(srv *serviceInfo, md *grpc.StreamDesc) {
+func (s *server) processStreamingRPC(srv *serviceInfo, md *grpc.StreamDesc) {
 
 }
 
-func (s *Server) ServeWebsocket(conn *websocket.Conn) {
+func (s *server) ServeWebsocket(conn *websocket.Conn) {
 	ctx := context.Background()
 
 	for {
@@ -236,8 +239,8 @@ func (s *Server) ServeWebsocket(conn *websocket.Conn) {
 	}
 }
 
-func NewServer() *Server {
-	s := &Server{
+func NewServer() *server {
+	s := &server{
 		services: make(map[string]*serviceInfo),
 	}
 

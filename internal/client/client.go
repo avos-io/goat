@@ -1,9 +1,10 @@
-package main
+package client
 
 import (
 	"context"
 
 	rpcheader "github.com/avos-io/grpc-websockets/gen"
+	"github.com/avos-io/grpc-websockets/internal/multiplexer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
@@ -21,12 +22,12 @@ type ClientConnInterface interface {
 */
 
 type WebsocketClientConn struct {
-	mp *RpcMultiplexer
+	mp *multiplexer.RpcMultiplexer
 }
 
 func NewWebsocketClientConn(conn *websocket.Conn) grpc.ClientConnInterface {
 	return &WebsocketClientConn{
-		mp: NewRpcMultiplexer(conn),
+		mp: multiplexer.NewRpcMultiplexer(conn),
 	}
 }
 
