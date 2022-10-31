@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"sync/atomic"
 
@@ -55,6 +56,7 @@ func (rm *RpcMultiplexer) CallUnaryMethod(ctx context.Context, header *rpcheader
 		Body:   body,
 	})
 	if err != nil {
+		log.Printf("CallUnaryMethod: codec.Marshall %v", err)
 		return nil, err
 	}
 
@@ -65,6 +67,7 @@ func (rm *RpcMultiplexer) CallUnaryMethod(ctx context.Context, header *rpcheader
 
 	err = rm.conn.Write(ctx, websocket.MessageBinary, rpcBody)
 	if err != nil {
+		log.Printf("CallUnaryMethod: conn.Write %v", err)
 		return nil, err
 	}
 

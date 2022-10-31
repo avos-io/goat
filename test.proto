@@ -6,3 +6,12 @@ option go_package = "./rpcheader";
 message IntMessage {
     int32 value = 1;
 }
+
+message AddRequest {
+    int32 a = 1;
+    int32 b = 2;
+}
+
+service IntService {
+    rpc Add(AddRequest) returns (IntMessage) {}
+}
