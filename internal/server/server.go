@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	rpcheader "github.com/avos-io/grpc-websockets/gen"
+	"github.com/avos-io/grpc-websockets/internal"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
@@ -17,34 +21,46 @@ import (
 	"nhooyr.io/websocket"
 )
 
-// https://github.com/grpc/grpc-go/blob/9127159caf5a3879dad56b795938fde3bc0a7eaa/server.go#L1762
-// for the interface we need to implement
-//
-// https://github.com/fullstorydev/grpchan/blob/9b5ad76b6f3d9146862d71690ea87eb9435acc4e/internal/transport_stream.go#L11
-// for an example
-type serverTransportStream struct {
+// ServerOption is an option used when constructing a NewServer.
+type ServerOption interface {
+	apply(*server)
 }
 
-func (*serverTransportStream) Method() string {
-	log.Panic("todo")
-	return ""
-}
-func (*serverTransportStream) SetHeader(md metadata.MD) error {
-	log.Panic("todo")
-	return nil
-}
-func (*serverTransportStream) SendHeader(md metadata.MD) error {
-	log.Panic("todo")
-	return nil
-}
-func (*serverTransportStream) SetTrailer(md metadata.MD) error {
-	log.Panic("todo")
-	return nil
+type serverOptFunc func(*server)
+
+func (fn serverOptFunc) apply(s *server) {
+	fn(s)
 }
 
-// https://github.com/grpc/grpc-go/blob/9127159caf5a3879dad56b795938fde3bc0a7eaa/server.go#L110
+// UnaryInterceptor returns a ServerOption that sets the UnaryServerInterceptor
+// for the server. Only one unary interceptor can be installed. The construction
+// of multiple interceptors (e.g., chaining) can be implemented at the caller.
+func UnaryInterceptor(i grpc.UnaryServerInterceptor) ServerOption {
+	return serverOptFunc(func(s *server) {
+		s.unaryInterceptor = i
+	})
+}
+
+// StreamInterceptor returns a ServerOption that sets the StreamServerInterceptor
+// for the server. Only one stream interceptor can be installed.
+func StreamInterceptor(i grpc.StreamServerInterceptor) ServerOption {
+	return serverOptFunc(func(s *server) {
+		s.streamInterceptor = i
+	})
+}
+
+func NewServer(opts ...ServerOption) *server {
+	srv := server{
+		services: make(map[string]*serviceInfo),
+	}
+	for _, opt := range opts {
+		opt.apply(&srv)
+	}
+	return &srv
+}
+
 type serviceInfo struct {
-	// Contains the implementation for the methods in this service.
+	name        string
 	serviceImpl interface{}
 	methods     map[string]*grpc.MethodDesc
 	streams     map[string]*grpc.StreamDesc
@@ -52,9 +68,10 @@ type serviceInfo struct {
 }
 
 type server struct {
-
-	// https://github.com/grpc/grpc-go/blob/9127159caf5a3879dad56b795938fde3bc0a7eaa/server.go#L137
 	services map[string]*serviceInfo // service name -> service info
+
+	unaryInterceptor  grpc.UnaryServerInterceptor
+	streamInterceptor grpc.StreamServerInterceptor
 }
 
 func parseRawMethod(sm string) (string, string, error) {
@@ -79,15 +96,23 @@ func (s *server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 		ht := reflect.TypeOf(sd.HandlerType).Elem()
 		st := reflect.TypeOf(ss)
 		if !st.Implements(ht) {
-			log.Fatalf("grpc: Server.RegisterService found the handler of type %v that does not satisfy %v", st, ht)
+			log.Fatalf(
+				"grpc: Server.RegisterService found the handler of type %v that does not satisfy %v",
+				st,
+				ht,
+			)
 		}
 	}
 
 	// https://github.com/grpc/grpc-go/blob/9127159caf5a3879dad56b795938fde3bc0a7eaa/server.go#L685
 	if _, ok := s.services[sd.ServiceName]; ok {
-		log.Fatalf("grpc: Server.RegisterService found duplicate service registration for %q", sd.ServiceName)
+		log.Fatalf(
+			"grpc: Server.RegisterService found duplicate service registration for %q",
+			sd.ServiceName,
+		)
 	}
 	info := &serviceInfo{
+		name:        sd.ServiceName,
 		serviceImpl: ss,
 		methods:     make(map[string]*grpc.MethodDesc),
 		streams:     make(map[string]*grpc.StreamDesc),
@@ -104,35 +129,151 @@ func (s *server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 	s.services[sd.ServiceName] = info
 }
 
-func (s *server) processUnaryRPC(srv *serviceInfo, md *grpc.MethodDesc, rpc *rpcheader.Rpc) *rpcheader.Rpc {
-	origCtx := context.Background()
+func (s *server) ServeWebsocket(conn *websocket.Conn) {
+	handler := newHandler(
+		context.Background(),
+		s.services,
+		s.unaryInterceptor,
+		s.streamInterceptor,
+		conn,
+	)
+	for {
+		err := handler.serveStep()
+		if err != nil {
+			log.Printf("handler error: %v", err)
+			return
+		}
+	}
+}
 
-	// The transport stream is needed for the grpc public functions SetHeader(), SetTrailer, etc.
-	// At the time of writing we don't use these ourselves so we don't need this immediately.
-	sts := &serverTransportStream{}
-	ctx := grpc.NewContextWithServerTransportStream(origCtx, sts)
+// handler for a specific websocket connection
+type handler struct {
+	ctx context.Context
+
+	// FIXME: we shouldn't have to pass these through
+	services          map[string]*serviceInfo // service name -> service info
+	unaryInterceptor  grpc.UnaryServerInterceptor
+	streamInterceptor grpc.StreamServerInterceptor
+
+	conn  *websocket.Conn
+	codec encoding.Codec
+
+	streams map[uint64]chan *rpcheader.Rpc
+	mutex   sync.Mutex
+}
+
+func newHandler(
+	ctx context.Context,
+	services map[string]*serviceInfo,
+	unaryInterceptor grpc.UnaryServerInterceptor,
+	streamInterceptor grpc.StreamServerInterceptor,
+	conn *websocket.Conn,
+) *handler {
+	return &handler{
+		ctx:               ctx,
+		services:          services,
+		unaryInterceptor:  unaryInterceptor,
+		streamInterceptor: streamInterceptor,
+		conn:              conn,
+		codec:             encoding.GetCodec(proto.Name),
+		streams:           map[uint64]chan *rpcheader.Rpc{},
+	}
+}
+
+func (h *handler) serveStep() error {
+	log.Printf("server loop: read")
+
+	typ, data, err := h.conn.Read(h.ctx)
+	if err != nil {
+		log.Printf("read err %v", err)
+		return err
+	}
+
+	if typ != websocket.MessageBinary {
+		return fmt.Errorf("not binary")
+	}
+
+	var rpc rpcheader.Rpc
+
+	err = h.codec.Unmarshal(data, &rpc)
+	if err != nil {
+		return err
+	}
+
+	if rpc.GetHeader() == nil {
+		return fmt.Errorf("no header")
+	}
+
+	rawMethod := rpc.GetHeader().Method
+	service, method, err := parseRawMethod(rawMethod)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("got rpc req for: %s / %s", service, method)
+
+	// https://github.com/grpc/grpc-go/blob/9127159caf5a3879dad56b795938fde3bc0a7eaa/server.go#L1710
+	srv, known := h.services[service]
+	if !known {
+		log.Printf("unknown service, %s", service)
+		return nil
+	}
+	if md, ok := srv.methods[method]; ok {
+		resp := h.processUnaryRpc(srv, md, &rpc)
+		data, err := h.codec.Marshal(resp)
+		if err != nil {
+			return err
+		}
+		h.conn.Write(h.ctx, websocket.MessageBinary, data)
+		return nil
+	}
+	if sd, ok := srv.streams[method]; ok {
+		return h.processStreamingRpc(srv, sd, &rpc)
+	}
+	log.Printf("unhandled method, %s %s", service, method)
+	return nil
+}
+
+func (h *handler) processUnaryRpc(
+	srv *serviceInfo,
+	md *grpc.MethodDesc,
+	rpc *rpcheader.Rpc,
+) *rpcheader.Rpc {
+	ctx := context.Background()
+
+	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
+	if err != nil {
+		log.Panicf("failed to processUnaryRpc: %v", err)
+	}
+	defer cancel()
+
+	fullMethod := fmt.Sprintf("/%s/%s", srv.name, md.MethodName)
+	sts := NewUnaryServerTransportStream(fullMethod)
+	ctx = grpc.NewContextWithServerTransportStream(ctx, sts)
 
 	body := rpc.GetBody()
-
-	codec := encoding.GetCodec(proto.Name)
 
 	dec := func(msg interface{}) error {
 		if body.Data == nil {
 			return nil
 		}
 
-		if err := codec.Unmarshal(body.Data, msg); err != nil {
+		if err := h.codec.Unmarshal(body.Data, msg); err != nil {
 			return status.Error(codes.InvalidArgument, err.Error())
 		}
 		return nil
 	}
 
-	resp, appErr := md.Handler(
-		srv.serviceImpl, // srv interface{}
-		ctx,             // ctx.Context
-		dec,             // func(interface{}) error
-		nil,             // TODO: UnaryServerInterceptor
-	)
+	resp, appErr := md.Handler(srv.serviceImpl, ctx, dec, h.unaryInterceptor)
+
+	respH := internal.ToKeyValue(sts.GetHeaders())
+	respHeader := &rpcheader.RequestHeader{
+		Method:  fullMethod,
+		Headers: respH,
+	}
+	respTrailer := &rpcheader.Trailer{
+		Metadata: internal.ToKeyValue(sts.GetTrailers()),
+	}
 
 	var respStatus *rpcheader.ResponseStatus
 
@@ -147,16 +288,16 @@ func (s *server) processUnaryRPC(srv *serviceInfo, md *grpc.MethodDesc, rpc *rpc
 		}
 
 		respStatus = &rpcheader.ResponseStatus{
-			Code:    appStatus.Proto().Code,
-			Message: appStatus.Proto().Message,
-			Details: appStatus.Proto().Details,
+			Code:    appStatus.Proto().GetCode(),
+			Message: appStatus.Proto().GetMessage(),
+			Details: appStatus.Proto().GetDetails(),
 		}
 	}
 
 	var respBody *rpcheader.Body
 
 	if resp != nil {
-		data, err := codec.Marshal(resp)
+		data, err := h.codec.Marshal(resp)
 
 		if err == nil {
 			respBody = &rpcheader.Body{
@@ -166,83 +307,153 @@ func (s *server) processUnaryRPC(srv *serviceInfo, md *grpc.MethodDesc, rpc *rpc
 	}
 
 	return &rpcheader.Rpc{
-		Id:     rpc.GetId(),
-		Status: respStatus,
-		Body:   respBody,
+		Id:      rpc.GetId(),
+		Header:  respHeader,
+		Status:  respStatus,
+		Body:    respBody,
+		Trailer: respTrailer,
 	}
 }
 
-func (s *server) processStreamingRPC(srv *serviceInfo, md *grpc.StreamDesc) {
+func (h *handler) processStreamingRpc(
+	srv *serviceInfo,
+	sd *grpc.StreamDesc,
+	rpc *rpcheader.Rpc,
+) error {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
 
+	if ch, ok := h.streams[rpc.Id]; ok {
+		ch <- rpc
+		return nil
+	}
+
+	streamId := rpc.Id
+	ch := make(chan *rpcheader.Rpc, 1)
+	h.streams[streamId] = ch
+
+	go h.newStream(srv, sd, rpc, streamId, ch)
+	return nil
 }
 
-func (s *server) ServeWebsocket(conn *websocket.Conn) {
+func (h *handler) newStream(
+	srv *serviceInfo,
+	sd *grpc.StreamDesc,
+	rpc *rpcheader.Rpc,
+	streamId uint64,
+	rCh chan *rpcheader.Rpc,
+) error {
 	ctx := context.Background()
 
-	for {
-		log.Printf("server loop: read")
+	defer h.unregisterStream(streamId)
 
-		typ, data, err := conn.Read(ctx)
-
-		if err != nil {
-			log.Printf("read err %v", err)
-			return
-		}
-
-		if typ != websocket.MessageBinary {
-			log.Printf("not binary")
-			return
-		}
-
-		codec := encoding.GetCodec(proto.Name)
-
-		var rpc rpcheader.Rpc
-
-		err = codec.Unmarshal(data, &rpc)
-		if err != nil {
-			log.Fatalf("error unmarshalling, %v", err)
-			return
-		}
-
-		if rpc.GetHeader() == nil {
-			log.Printf("no header")
-			return
-		}
-
-		rawMethod := rpc.GetHeader().Method
-		service, method, err := parseRawMethod(rawMethod)
-
-		if err != nil {
-			log.Printf("error parsing; %v", err)
-			return
-		}
-
-		log.Printf("got rpc req for: %s / %s", service, method)
-
-		// https://github.com/grpc/grpc-go/blob/9127159caf5a3879dad56b795938fde3bc0a7eaa/server.go#L1710
-		srv, knownService := s.services[service]
-		if knownService {
-			if md, ok := srv.methods[method]; ok {
-				resp := s.processUnaryRPC(srv, md, &rpc)
-				data, err := codec.Marshal(resp)
-				if err != nil {
-					log.Fatal("todo")
-				}
-				conn.Write(ctx, websocket.MessageBinary, data)
-				continue
-			}
-			if sd, ok := srv.streams[method]; ok {
-				s.processStreamingRPC(srv, sd)
-				continue
-			}
+	r := func(ctx context.Context) (*rpcheader.Rpc, error) {
+		select {
+		case msg := <-rCh:
+			return msg, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 	}
+
+	w := func(ctx context.Context, rpc *rpcheader.Rpc) error {
+		bytes, err := h.codec.Marshal(rpc)
+		if err != nil {
+			return err
+		}
+		return h.conn.Write(ctx, websocket.MessageBinary, bytes)
+	}
+
+	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
+	if err != nil {
+		log.Panicf("failed to processUnaryRpc: %v", err)
+	}
+	defer cancel()
+
+	stream, err := newServerStream(ctx, streamId, sd.StreamName, r, w)
+	if err != nil {
+		return err
+	}
+
+	info := &grpc.StreamServerInfo{
+		FullMethod:     fmt.Sprintf("/%s/%s", srv.name, sd.StreamName),
+		IsClientStream: sd.ClientStreams,
+		IsServerStream: sd.ServerStreams,
+	}
+	sts := NewServerTransportStream(info.FullMethod, stream)
+	stream.SetContext(grpc.NewContextWithServerTransportStream(ctx, sts))
+
+	if h.streamInterceptor != nil {
+		err = h.streamInterceptor(srv.serviceImpl, stream, info, sd.Handler)
+	} else {
+		err = sd.Handler(srv.serviceImpl, stream)
+	}
+
+	err = stream.SendTrailer(err)
+	if err != nil {
+		log.Printf("ServerStream SendTrailer, %v", err)
+		return err
+	}
+
+	return nil
 }
 
-func NewServer() *server {
-	s := &server{
-		services: make(map[string]*serviceInfo),
+func (h *handler) unregisterStream(id uint64) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
+	if ch, ok := h.streams[id]; ok {
+		close(ch)
 	}
 
-	return s
+	delete(h.streams, id)
+}
+
+// contextFromHeaders returns a child of the given context that is populated
+// using the given headers. The headers are converted to incoming metadata that
+// can be retrieved via metadata.FromIncomingContext. If the headers contain a
+// gRPC timeout, that is used to create a timeout for the returned context.
+func contextFromHeaders(
+	parent context.Context,
+	h *rpcheader.RequestHeader,
+) (context.Context, context.CancelFunc, error) {
+	cancel := func() {} // default to no-op
+	md, err := internal.ToMetadata(h.Headers)
+	if err != nil {
+		return parent, cancel, err
+	}
+	ctx := metadata.NewIncomingContext(parent, md)
+
+	// deadline propagation
+	timeout := ""
+	for _, rh := range h.Headers {
+		if rh.Key == "GRPC-Timeout" {
+			timeout = rh.Value
+		}
+	}
+	if timeout != "" {
+		// See GRPC wire format, "Timeout" component of request: https://grpc.io/docs/guides/wire.html#requests
+		suffix := timeout[len(timeout)-1]
+		if timeoutVal, err := strconv.ParseInt(timeout[:len(timeout)-1], 10, 64); err == nil {
+			var unit time.Duration
+			switch suffix {
+			case 'H':
+				unit = time.Hour
+			case 'M':
+				unit = time.Minute
+			case 'S':
+				unit = time.Second
+			case 'm':
+				unit = time.Millisecond
+			case 'u':
+				unit = time.Microsecond
+			case 'n':
+				unit = time.Nanosecond
+			}
+			if unit != 0 {
+				ctx, cancel = context.WithTimeout(ctx, time.Duration(timeoutVal)*unit)
+			}
+		}
+	}
+	return ctx, cancel, nil
 }

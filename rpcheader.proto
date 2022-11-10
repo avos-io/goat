@@ -11,9 +11,9 @@ message Rpc {
     ResponseStatus status = 3;
     Body body = 4;  // Request or response body (protobuf data)
 
-    // TODO: responses
-    //Complete complete = 5;
-    //Failure failure = 6;
+    // Stream control responses
+    Trailer trailer = 5;
+    //Error error = 6;
     //Cancel cancel = 7;
 }
 
@@ -37,4 +37,9 @@ message KeyValue {
 
 message Body {
     bytes data = 1;
+}
+
+// Signals that a stream is done. Used only as a response.
+message Trailer {
+    repeated KeyValue metadata = 1;
 }

@@ -14,4 +14,8 @@ message AddRequest {
 
 service IntService {
     rpc Add(AddRequest) returns (IntMessage) {}
+
+    rpc BidiStream(stream IntMessage) returns (stream IntMessage) {}
+    rpc ServerStream(IntMessage) returns (stream IntMessage) {}
+    rpc ClientStream(stream IntMessage) returns (IntMessage) {}
 }
