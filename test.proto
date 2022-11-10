@@ -1,17 +1,15 @@
 syntax = "proto3";
 
 package grpcwebsockets;
-option go_package = "./rpcheader";
+option go_package = "./testproto";
 
-message IntMessage {
+message Msg {
     int32 value = 1;
 }
 
-message AddRequest {
-    int32 a = 1;
-    int32 b = 2;
-}
-
-service IntService {
-    rpc Add(AddRequest) returns (IntMessage) {}
+service TestService {
+    rpc Unary(Msg) returns (Msg) {}
+    rpc BidiStream(stream Msg) returns (stream Msg) {}
+    rpc ServerStream(Msg) returns (stream Msg) {}
+    rpc ClientStream(stream Msg) returns (Msg) {}
 }
