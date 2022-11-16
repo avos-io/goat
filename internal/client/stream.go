@@ -41,7 +41,10 @@ func newClientStream(
 		teardown: teardown,
 		rCh:      make(chan *rpcheader.Body),
 	}
+
 	cs.ready.Add(1)
+	go cs.readLoop()
+
 	return cs
 }
 

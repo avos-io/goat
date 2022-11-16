@@ -11,7 +11,6 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/status"
-	"nhooyr.io/websocket"
 )
 
 type testConn struct {
@@ -19,25 +18,24 @@ type testConn struct {
 }
 
 type readReturn struct {
-	typ  websocket.MessageType
-	data []byte
-	err  error
+	rpc *rpcheader.Rpc
+	err error
 }
 
-func (c *testConn) Read(ctx context.Context) (websocket.MessageType, []byte, error) {
+func (c *testConn) Read(ctx context.Context) (*rpcheader.Rpc, error) {
 	args := c.Called(ctx)
 	ch := args.Get(0).(chan readReturn)
 	rr := <-ch
-	return rr.typ, rr.data, rr.err
+	return rr.rpc, rr.err
 }
 
-func (c *testConn) Write(ctx context.Context, typ websocket.MessageType, p []byte) error {
-	args := c.Called(ctx, typ, p)
+func (c *testConn) Write(ctx context.Context, rpc *rpcheader.Rpc) error {
+	args := c.Called(ctx, rpc)
 	err := args.Error(0)
 	return err
 }
 
-func makeResponse(id uint64, args interface{}) []byte {
+func makeResponse(id uint64, args interface{}) *rpcheader.Rpc {
 	codec := encoding.GetCodec(proto.Name)
 
 	body, err := codec.Marshal(args)
@@ -45,29 +43,17 @@ func makeResponse(id uint64, args interface{}) []byte {
 		panic(err)
 	}
 
-	ret, err := codec.Marshal(&rpcheader.Rpc{
+	return &rpcheader.Rpc{
 		Id:   id,
 		Body: &rpcheader.Body{Data: body},
-	})
-	if err != nil {
-		panic(err)
 	}
-
-	return ret
 }
 
-func makeErrorResponse(id uint64, status *rpcheader.ResponseStatus) []byte {
-	codec := encoding.GetCodec(proto.Name)
-
-	ret, err := codec.Marshal(&rpcheader.Rpc{
+func makeErrorResponse(id uint64, status *rpcheader.ResponseStatus) *rpcheader.Rpc {
+	return &rpcheader.Rpc{
 		Id:     id,
 		Status: status,
-	})
-	if err != nil {
-		panic(err)
 	}
-
-	return ret
 }
 
 func TestUnaryMethodSuccess(t *testing.T) {
@@ -79,9 +65,9 @@ func TestUnaryMethodSuccess(t *testing.T) {
 	readChan := make(chan readReturn)
 
 	tc.On("Read", mock.Anything).Return(readChan)
-	tc.On("Write", mock.Anything, websocket.MessageBinary, mock.Anything).Return(nil).
+	tc.On("Write", mock.Anything, mock.Anything).Return(nil).
 		Run(func(args mock.Arguments) {
-			readChan <- readReturn{websocket.MessageBinary, makeResponse(1, &rpcheader.IntMessage{Value: 42}), nil}
+			readChan <- readReturn{makeResponse(1, &rpcheader.IntMessage{Value: 42}), nil}
 		})
 
 	valBytes, err := rm.CallUnaryMethod(
@@ -110,10 +96,17 @@ func TestUnaryMethodFailure(t *testing.T) {
 	readChan := make(chan readReturn)
 
 	tc.On("Read", mock.Anything).Return(readChan)
-	tc.On("Write", mock.Anything, websocket.MessageBinary, mock.Anything).Return(nil).
+	tc.On("Write", mock.Anything, mock.Anything).Return(nil).
 		Run(func(args mock.Arguments) {
-			readChan <- readReturn{websocket.MessageBinary,
-				makeErrorResponse(1, &rpcheader.ResponseStatus{Code: int32(codes.InvalidArgument), Message: "Hello world"}), nil}
+			readChan <- readReturn{
+				makeErrorResponse(
+					1,
+					&rpcheader.ResponseStatus{
+						Code:    int32(codes.InvalidArgument),
+						Message: "Hello world"},
+				),
+				nil,
+			}
 		})
 
 	valBytes, err := rm.CallUnaryMethod(

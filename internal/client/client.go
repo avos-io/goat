@@ -12,10 +12,9 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
-	"nhooyr.io/websocket"
 )
 
-type WebsocketClientConn struct {
+type ClientConn struct {
 	mp *RpcMultiplexer
 
 	unaryInterceptor        grpc.UnaryClientInterceptor
@@ -24,11 +23,8 @@ type WebsocketClientConn struct {
 	chainStreamInterceptors []grpc.StreamClientInterceptor
 }
 
-func NewWebsocketClientConn(
-	conn *websocket.Conn,
-	opts ...DialOption,
-) grpc.ClientConnInterface {
-	cc := WebsocketClientConn{
+func NewClientConn(conn internal.RpcReadWriter, opts ...DialOption) grpc.ClientConnInterface {
+	cc := ClientConn{
 		mp: NewRpcMultiplexer(conn),
 	}
 	for _, opt := range opts {
@@ -43,21 +39,21 @@ func NewWebsocketClientConn(
 
 // Invoke performs a unary RPC and returns after the response is received
 // into reply.
-func (wcc *WebsocketClientConn) Invoke(
+func (cc *ClientConn) Invoke(
 	ctx context.Context,
 	method string,
 	args interface{},
 	reply interface{},
 	opts ...grpc.CallOption,
 ) error {
-	if wcc.unaryInterceptor != nil {
-		return wcc.unaryInterceptor(ctx, method, args, reply, nil, wcc.asInvoker, opts...)
+	if cc.unaryInterceptor != nil {
+		return cc.unaryInterceptor(ctx, method, args, reply, nil, cc.asInvoker, opts...)
 	}
 	grpc.WithChainUnaryInterceptor()
-	return wcc.invoke(ctx, method, args, reply, opts...)
+	return cc.invoke(ctx, method, args, reply, opts...)
 }
 
-func (wcc *WebsocketClientConn) invoke(
+func (cc *ClientConn) invoke(
 	ctx context.Context,
 	method string,
 	args interface{},
@@ -76,7 +72,7 @@ func (wcc *WebsocketClientConn) invoke(
 		return err
 	}
 
-	replyBody, err := wcc.mp.CallUnaryMethod(ctx,
+	replyBody, err := cc.mp.CallUnaryMethod(ctx,
 		&rpcheader.RequestHeader{
 			Method:  method,
 			Headers: headers,
@@ -93,30 +89,30 @@ func (wcc *WebsocketClientConn) invoke(
 	return codec.Unmarshal(replyBody.Data, reply)
 }
 
-func (wcc *WebsocketClientConn) asInvoker(
+func (cc *ClientConn) asInvoker(
 	ctx context.Context,
 	method string,
 	req, reply interface{},
 	_ *grpc.ClientConn,
 	opts ...grpc.CallOption,
 ) error {
-	return wcc.invoke(ctx, method, req, reply, opts...)
+	return cc.invoke(ctx, method, req, reply, opts...)
 }
 
 // NewStream begins a streaming RPC.
-func (wcc *WebsocketClientConn) NewStream(
+func (cc *ClientConn) NewStream(
 	ctx context.Context,
 	desc *grpc.StreamDesc,
 	method string,
 	opts ...grpc.CallOption,
 ) (grpc.ClientStream, error) {
-	if wcc.streamInterceptor != nil {
-		return wcc.streamInterceptor(ctx, desc, nil, method, wcc.asStreamer, opts...)
+	if cc.streamInterceptor != nil {
+		return cc.streamInterceptor(ctx, desc, nil, method, cc.asStreamer, opts...)
 	}
-	return wcc.newStream(ctx, desc, method, opts...)
+	return cc.newStream(ctx, desc, method, opts...)
 }
 
-func (wcc *WebsocketClientConn) newStream(
+func (cc *ClientConn) newStream(
 	ctx context.Context,
 	desc *grpc.StreamDesc,
 	method string,
@@ -133,21 +129,21 @@ func (wcc *WebsocketClientConn) newStream(
 		Headers: headers,
 	}
 
-	stream, err := wcc.mp.NewStream(ctx, &header)
+	stream, err := cc.mp.NewStream(ctx, &header)
 	if err != nil {
 		return nil, err
 	}
 	return stream, nil
 }
 
-func (wcc *WebsocketClientConn) asStreamer(
+func (cc *ClientConn) asStreamer(
 	ctx context.Context,
 	desc *grpc.StreamDesc,
 	_ *grpc.ClientConn,
 	method string,
 	opts ...grpc.CallOption,
 ) (grpc.ClientStream, error) {
-	return wcc.newStream(ctx, desc, method, opts...)
+	return cc.newStream(ctx, desc, method, opts...)
 }
 
 // headersFromContext returns request headers to send to the remote host based
@@ -174,11 +170,11 @@ func headersFromContext(ctx context.Context) []*rpcheader.KeyValue {
 }
 
 // chainedUnaryInterceptors chains all unary client interceptors into one.
-func chainedUnaryInterceptors(wcc *WebsocketClientConn) grpc.UnaryClientInterceptor {
-	interceptors := wcc.chainUnaryInterceptors
-	if wcc.unaryInterceptor != nil {
+func chainedUnaryInterceptors(cc *ClientConn) grpc.UnaryClientInterceptor {
+	interceptors := cc.chainUnaryInterceptors
+	if cc.unaryInterceptor != nil {
 		interceptors = append(
-			[]grpc.UnaryClientInterceptor{wcc.unaryInterceptor},
+			[]grpc.UnaryClientInterceptor{cc.unaryInterceptor},
 			interceptors...,
 		)
 	}
@@ -240,11 +236,11 @@ func getChainUnaryInvoker(
 }
 
 // chainedStreamInterceptors chains all stream client interceptors into one.
-func chainedStreamInterceptors(wcc *WebsocketClientConn) grpc.StreamClientInterceptor {
-	interceptors := wcc.chainStreamInterceptors
-	if wcc.streamInterceptor != nil {
+func chainedStreamInterceptors(cc *ClientConn) grpc.StreamClientInterceptor {
+	interceptors := cc.chainStreamInterceptors
+	if cc.streamInterceptor != nil {
 		interceptors = append(
-			[]grpc.StreamClientInterceptor{wcc.streamInterceptor},
+			[]grpc.StreamClientInterceptor{cc.streamInterceptor},
 			interceptors...)
 	}
 	switch len(interceptors) {

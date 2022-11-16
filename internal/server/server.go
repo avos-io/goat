@@ -18,7 +18,6 @@ import (
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-	"nhooyr.io/websocket"
 )
 
 // ServerOption is an option used when constructing a NewServer.
@@ -129,13 +128,13 @@ func (s *server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 	s.services[sd.ServiceName] = info
 }
 
-func (s *server) ServeWebsocket(conn *websocket.Conn) {
+func (s *server) Serve(rw internal.RpcReadWriter) {
 	handler := newHandler(
 		context.Background(),
 		s.services,
 		s.unaryInterceptor,
 		s.streamInterceptor,
-		conn,
+		rw,
 	)
 	for {
 		err := handler.serveStep()
@@ -155,7 +154,7 @@ type handler struct {
 	unaryInterceptor  grpc.UnaryServerInterceptor
 	streamInterceptor grpc.StreamServerInterceptor
 
-	conn  *websocket.Conn
+	rw    internal.RpcReadWriter
 	codec encoding.Codec
 
 	streams map[uint64]chan *rpcheader.Rpc
@@ -167,14 +166,14 @@ func newHandler(
 	services map[string]*serviceInfo,
 	unaryInterceptor grpc.UnaryServerInterceptor,
 	streamInterceptor grpc.StreamServerInterceptor,
-	conn *websocket.Conn,
+	rw internal.RpcReadWriter,
 ) *handler {
 	return &handler{
 		ctx:               ctx,
 		services:          services,
 		unaryInterceptor:  unaryInterceptor,
 		streamInterceptor: streamInterceptor,
-		conn:              conn,
+		rw:                rw,
 		codec:             encoding.GetCodec(proto.Name),
 		streams:           map[uint64]chan *rpcheader.Rpc{},
 	}
@@ -183,20 +182,9 @@ func newHandler(
 func (h *handler) serveStep() error {
 	log.Printf("server loop: read")
 
-	typ, data, err := h.conn.Read(h.ctx)
+	rpc, err := h.rw.Read(h.ctx)
 	if err != nil {
 		log.Printf("read err %v", err)
-		return err
-	}
-
-	if typ != websocket.MessageBinary {
-		return fmt.Errorf("not binary")
-	}
-
-	var rpc rpcheader.Rpc
-
-	err = h.codec.Unmarshal(data, &rpc)
-	if err != nil {
 		return err
 	}
 
@@ -219,16 +207,12 @@ func (h *handler) serveStep() error {
 		return nil
 	}
 	if md, ok := srv.methods[method]; ok {
-		resp := h.processUnaryRpc(srv, md, &rpc)
-		data, err := h.codec.Marshal(resp)
-		if err != nil {
-			return err
-		}
-		h.conn.Write(h.ctx, websocket.MessageBinary, data)
+		resp := h.processUnaryRpc(srv, md, rpc)
+		h.rw.Write(h.ctx, resp)
 		return nil
 	}
 	if sd, ok := srv.streams[method]; ok {
-		return h.processStreamingRpc(srv, sd, &rpc)
+		return h.processStreamingRpc(srv, sd, rpc)
 	}
 	log.Printf("unhandled method, %s %s", service, method)
 	return nil
@@ -356,21 +340,13 @@ func (h *handler) newStream(
 		}
 	}
 
-	w := func(ctx context.Context, rpc *rpcheader.Rpc) error {
-		bytes, err := h.codec.Marshal(rpc)
-		if err != nil {
-			return err
-		}
-		return h.conn.Write(ctx, websocket.MessageBinary, bytes)
-	}
-
 	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
 	if err != nil {
 		log.Panicf("failed to processUnaryRpc: %v", err)
 	}
 	defer cancel()
 
-	stream, err := newServerStream(ctx, streamId, sd.StreamName, r, w)
+	stream, err := newServerStream(ctx, streamId, sd.StreamName, r, h.rw.Write)
 	if err != nil {
 		return err
 	}

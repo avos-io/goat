@@ -4,12 +4,12 @@ import "google.golang.org/grpc"
 
 // DialOption is an option used when constructing a NewWebsocketClientConn.
 type DialOption interface {
-	apply(*WebsocketClientConn)
+	apply(*ClientConn)
 }
 
-type dialOptFunc func(*WebsocketClientConn)
+type dialOptFunc func(*ClientConn)
 
-func (fn dialOptFunc) apply(s *WebsocketClientConn) {
+func (fn dialOptFunc) apply(s *ClientConn) {
 	fn(s)
 }
 
@@ -23,7 +23,7 @@ func (fn dialOptFunc) apply(s *WebsocketClientConn) {
 // using e.g., google.golang.org/grpc/metadata as it is, rather than re-
 // implementing that functionality ourselves.
 func WithUnaryInterceptor(i grpc.UnaryClientInterceptor) DialOption {
-	return dialOptFunc(func(cc *WebsocketClientConn) {
+	return dialOptFunc(func(cc *ClientConn) {
 		cc.unaryInterceptor = i
 	})
 }
@@ -38,7 +38,7 @@ func WithUnaryInterceptor(i grpc.UnaryClientInterceptor) DialOption {
 // using e.g., google.golang.org/grpc/metadata as it is, rather than re-
 // implementing that functionality ourselves.
 func WithStreamInterceptor(i grpc.StreamClientInterceptor) DialOption {
-	return dialOptFunc(func(cc *WebsocketClientConn) {
+	return dialOptFunc(func(cc *ClientConn) {
 		cc.streamInterceptor = i
 	})
 }
@@ -56,7 +56,7 @@ func WithStreamInterceptor(i grpc.StreamClientInterceptor) DialOption {
 // using e.g., google.golang.org/grpc/metadata as it is, rather than re-
 // implementing that functionality ourselves.
 func WithChainUnaryInterceptor(is ...grpc.UnaryClientInterceptor) DialOption {
-	return dialOptFunc(func(cc *WebsocketClientConn) {
+	return dialOptFunc(func(cc *ClientConn) {
 		cc.chainUnaryInterceptors = append(cc.chainUnaryInterceptors, is...)
 	})
 }
@@ -74,7 +74,7 @@ func WithChainUnaryInterceptor(is ...grpc.UnaryClientInterceptor) DialOption {
 // using e.g., google.golang.org/grpc/metadata as it is, rather than re-
 // implementing that functionality ourselves.
 func WithChainStreamInterceptor(is ...grpc.StreamClientInterceptor) DialOption {
-	return dialOptFunc(func(cc *WebsocketClientConn) {
+	return dialOptFunc(func(cc *ClientConn) {
 		cc.chainStreamInterceptors = append(cc.chainStreamInterceptors, is...)
 	})
 }

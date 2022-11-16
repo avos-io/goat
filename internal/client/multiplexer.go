@@ -8,22 +8,16 @@ import (
 	"sync/atomic"
 
 	rpcheader "github.com/avos-io/grpc-websockets/gen"
+	"github.com/avos-io/grpc-websockets/internal"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/status"
-	"nhooyr.io/websocket"
 )
 
-// Just the basics we need, to allow for testing
-type SimpleWebsocketConn interface {
-	Read(ctx context.Context) (websocket.MessageType, []byte, error)
-	Write(ctx context.Context, typ websocket.MessageType, p []byte) error
-}
-
 type RpcMultiplexer struct {
-	conn     SimpleWebsocketConn
+	rw       internal.RpcReadWriter
 	handlers map[uint64]chan *rpcheader.Rpc
 
 	ctx    context.Context
@@ -35,9 +29,9 @@ type RpcMultiplexer struct {
 	codec encoding.Codec
 }
 
-func NewRpcMultiplexer(conn SimpleWebsocketConn) *RpcMultiplexer {
+func NewRpcMultiplexer(rw internal.RpcReadWriter) *RpcMultiplexer {
 	rm := &RpcMultiplexer{
-		conn:     conn,
+		rw:       rw,
 		handlers: make(map[uint64]chan *rpcheader.Rpc),
 		codec:    encoding.GetCodec(proto.Name),
 	}
@@ -59,22 +53,18 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 ) (*rpcheader.Body, error) {
 	streamId := rm.streamCounter.Add(1)
 
-	rpcBody, err := rm.codec.Marshal(&rpcheader.Rpc{
-		Id:     streamId,
-		Header: header,
-		Body:   body,
-	})
-	if err != nil {
-		log.Printf("CallUnaryMethod: codec.Marshall %v", err)
-		return nil, err
-	}
-
 	respChan := make(chan *rpcheader.Rpc, 1)
 
 	rm.registerHandler(streamId, respChan)
 	defer rm.unregisterHandler(streamId)
 
-	err = rm.conn.Write(ctx, websocket.MessageBinary, rpcBody)
+	rpc := rpcheader.Rpc{
+		Id:     streamId,
+		Header: header,
+		Body:   body,
+	}
+
+	err := rm.rw.Write(ctx, &rpc)
 	if err != nil {
 		log.Printf("CallUnaryMethod: conn.Write %v", err)
 		return nil, err
@@ -111,6 +101,7 @@ func (rm *RpcMultiplexer) NewStream(
 	teardown := func() {
 		rm.unregisterHandler(streamId)
 	}
+
 	r := func(ctx context.Context) (*rpcheader.Rpc, error) {
 		select {
 		case rpc := <-respChan:
@@ -120,55 +111,29 @@ func (rm *RpcMultiplexer) NewStream(
 			return nil, ctx.Err()
 		}
 	}
-	w := func(ctx context.Context, rpc *rpcheader.Rpc) error {
-		// log.Printf("[client w]: %v", rpc)
-		bytes, err := rm.codec.Marshal(rpc)
-		if err != nil {
-			return err
-		}
-		return rm.conn.Write(ctx, websocket.MessageBinary, bytes)
-	}
 
 	log.Printf("NewStream: stream %d", streamId)
 	rpc := rpcheader.Rpc{
 		Id:     streamId,
 		Header: header,
 	}
-	err := w(ctx, &rpc)
+	err := rm.rw.Write(ctx, &rpc)
 	if err != nil {
 		log.Printf("NewStream: failed to open, %v", err)
 		return nil, err
 	}
 
-	stream := newClientStream(ctx, rm, streamId, header.GetMethod(), r, w, teardown)
-	go func() {
-		if err := stream.readLoop(); err != nil {
-			log.Printf("NewStream: stream %d ended with %v", streamId, err)
-		}
-	}()
-
+	stream := newClientStream(ctx, rm, streamId, header.GetMethod(), r, rm.rw.Write, teardown)
 	return stream, nil
 }
 
 func (rm *RpcMultiplexer) readLoop() {
 	for {
-		msgType, data, err := rm.conn.Read(rm.ctx)
-
+		rpc, err := rm.rw.Read(rm.ctx)
 		if err != nil {
 			return
 		}
-
-		if msgType != websocket.MessageBinary {
-			return
-		}
-
-		var rpc rpcheader.Rpc
-		err = rm.codec.Unmarshal(data, &rpc)
-		if err != nil {
-			return
-		}
-
-		rm.handleResponse(&rpc)
+		rm.handleResponse(rpc)
 	}
 }
 
