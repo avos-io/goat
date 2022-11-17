@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	rpcheader "github.com/avos-io/grpc-websockets/gen"
+	rpcheader "github.com/avos-io/goat/gen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc/codes"

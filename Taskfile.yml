@@ -1,0 +1,49 @@
+version: '3'
+method: timestamp
+run: once
+
+tasks:
+  default:
+    deps: [test]
+
+  gen:
+    desc: |
+      Run any generate actions. Useful to run to make an IDE happy.
+    deps:
+      - task: gen-proto
+      - task: gen-mocks
+
+  test:
+    deps: [gen-mocks]
+    desc: |
+      Test all targets.
+    cmds:
+      - go test -cover ./...
+
+  clean:
+    desc: |
+      Remove any build artefacts.
+    cmds:
+      - rm -fr gen/*
+
+  gen-proto:
+    cmds:
+      - bash protobuild.sh
+      - touch gen/proto.touch
+    generates:
+      - gen/proto.touch
+    sources:
+      - protobuild.sh
+      - "**/*.proto"
+
+  gen-mocks:
+    deps: [gen-proto]
+    cmds:
+      - mockery --dir pkg/ --output ./gen/mocks --all --keeptree --with-expecter --case snake
+      - mockery --name "RpcReadWriter" --dir . --output ./gen/mocks --case snake
+    sources:
+      - "pkg/**/*.go"
+      - "goat.go"
+    generates:
+      - gen/mocks/**/*.go
+

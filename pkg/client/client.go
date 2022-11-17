@@ -6,8 +6,9 @@ import (
 	"log"
 	"time"
 
-	rpcheader "github.com/avos-io/grpc-websockets/gen"
-	"github.com/avos-io/grpc-websockets/internal"
+	"github.com/avos-io/goat"
+	rpcheader "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/internal"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
@@ -23,7 +24,7 @@ type ClientConn struct {
 	chainStreamInterceptors []grpc.StreamClientInterceptor
 }
 
-func NewClientConn(conn internal.RpcReadWriter, opts ...DialOption) grpc.ClientConnInterface {
+func NewClientConn(conn goat.RpcReadWriter, opts ...DialOption) grpc.ClientConnInterface {
 	cc := ClientConn{
 		mp: NewRpcMultiplexer(conn),
 	}

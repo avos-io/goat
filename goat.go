@@ -1,4 +1,4 @@
-package internal
+package goat
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/encoding/proto"
 	"nhooyr.io/websocket"
 
-	rpcproto "github.com/avos-io/grpc-websockets/gen"
+	rpcproto "github.com/avos-io/goat/gen"
 )
 
 type RpcReadWriter interface {

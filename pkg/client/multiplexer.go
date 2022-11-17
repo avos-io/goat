@@ -7,8 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	rpcheader "github.com/avos-io/grpc-websockets/gen"
-	"github.com/avos-io/grpc-websockets/internal"
+	"github.com/avos-io/goat"
+	rpcheader "github.com/avos-io/goat/gen"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding"
@@ -17,7 +17,7 @@ import (
 )
 
 type RpcMultiplexer struct {
-	rw       internal.RpcReadWriter
+	rw       goat.RpcReadWriter
 	handlers map[uint64]chan *rpcheader.Rpc
 
 	ctx    context.Context
@@ -29,7 +29,7 @@ type RpcMultiplexer struct {
 	codec encoding.Codec
 }
 
-func NewRpcMultiplexer(rw internal.RpcReadWriter) *RpcMultiplexer {
+func NewRpcMultiplexer(rw goat.RpcReadWriter) *RpcMultiplexer {
 	rm := &RpcMultiplexer{
 		rw:       rw,
 		handlers: make(map[uint64]chan *rpcheader.Rpc),

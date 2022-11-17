@@ -6,8 +6,8 @@ import (
 	"log"
 	"sync"
 
-	rpcheader "github.com/avos-io/grpc-websockets/gen"
-	"github.com/avos-io/grpc-websockets/internal"
+	rpcheader "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/internal"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

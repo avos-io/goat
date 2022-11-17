@@ -6,7 +6,7 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	rpcheader "github.com/avos-io/grpc-websockets/gen"
+	rpcheader "github.com/avos-io/goat/gen"
 )
 
 func ToKeyValue(mds ...metadata.MD) []*rpcheader.KeyValue {

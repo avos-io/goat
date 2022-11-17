@@ -11,10 +11,10 @@ import (
 	"net/http"
 	"time"
 
-	rpcheader "github.com/avos-io/grpc-websockets/gen"
-	"github.com/avos-io/grpc-websockets/internal"
-	"github.com/avos-io/grpc-websockets/internal/client"
-	"github.com/avos-io/grpc-websockets/internal/server"
+	"github.com/avos-io/goat"
+	rpcheader "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/pkg/client"
+	"github.com/avos-io/goat/pkg/server"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -132,7 +132,7 @@ func main() {
 			defer cancel()
 
 			srv.Serve(
-				internal.NewWebsocketRpcReadWriter(c),
+				goat.NewWebsocketRpcReadWriter(c),
 			)
 
 			c.Close(websocket.StatusNormalClosure, "")
@@ -155,7 +155,7 @@ func main() {
 		defer c.Close(websocket.StatusInternalError, "the sky is falling (client)")
 
 		cci := client.NewClientConn(
-			internal.NewWebsocketRpcReadWriter(c),
+			goat.NewWebsocketRpcReadWriter(c),
 			client.WithUnaryInterceptor(unaryInterceptAddMetadata),
 			client.WithStreamInterceptor(streamInterceptAddMetadata),
 		)

@@ -10,8 +10,9 @@ import (
 	"sync"
 	"time"
 
-	rpcheader "github.com/avos-io/grpc-websockets/gen"
-	"github.com/avos-io/grpc-websockets/internal"
+	"github.com/avos-io/goat"
+	rpcheader "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/internal"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
@@ -22,12 +23,12 @@ import (
 
 // ServerOption is an option used when constructing a NewServer.
 type ServerOption interface {
-	apply(*server)
+	apply(*Server)
 }
 
-type serverOptFunc func(*server)
+type serverOptFunc func(*Server)
 
-func (fn serverOptFunc) apply(s *server) {
+func (fn serverOptFunc) apply(s *Server) {
 	fn(s)
 }
 
@@ -35,7 +36,7 @@ func (fn serverOptFunc) apply(s *server) {
 // for the server. Only one unary interceptor can be installed. The construction
 // of multiple interceptors (e.g., chaining) can be implemented at the caller.
 func UnaryInterceptor(i grpc.UnaryServerInterceptor) ServerOption {
-	return serverOptFunc(func(s *server) {
+	return serverOptFunc(func(s *Server) {
 		s.unaryInterceptor = i
 	})
 }
@@ -43,13 +44,13 @@ func UnaryInterceptor(i grpc.UnaryServerInterceptor) ServerOption {
 // StreamInterceptor returns a ServerOption that sets the StreamServerInterceptor
 // for the server. Only one stream interceptor can be installed.
 func StreamInterceptor(i grpc.StreamServerInterceptor) ServerOption {
-	return serverOptFunc(func(s *server) {
+	return serverOptFunc(func(s *Server) {
 		s.streamInterceptor = i
 	})
 }
 
-func NewServer(opts ...ServerOption) *server {
-	srv := server{
+func NewServer(opts ...ServerOption) *Server {
+	srv := Server{
 		services: make(map[string]*serviceInfo),
 	}
 	for _, opt := range opts {
@@ -66,7 +67,7 @@ type serviceInfo struct {
 	mdata       interface{}
 }
 
-type server struct {
+type Server struct {
 	services map[string]*serviceInfo // service name -> service info
 
 	unaryInterceptor  grpc.UnaryServerInterceptor
@@ -87,7 +88,7 @@ func parseRawMethod(sm string) (string, string, error) {
 }
 
 // See grpc.ServiceRegistrar
-func (s *server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
+func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 	// FIXME: copy-paste from grpc code
 
 	// https://github.com/grpc/grpc-go/blob/9127159caf5a3879dad56b795938fde3bc0a7eaa/server.go#L668
@@ -128,7 +129,7 @@ func (s *server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 	s.services[sd.ServiceName] = info
 }
 
-func (s *server) Serve(rw internal.RpcReadWriter) {
+func (s *Server) Serve(rw goat.RpcReadWriter) {
 	handler := newHandler(
 		context.Background(),
 		s.services,
@@ -154,7 +155,7 @@ type handler struct {
 	unaryInterceptor  grpc.UnaryServerInterceptor
 	streamInterceptor grpc.StreamServerInterceptor
 
-	rw    internal.RpcReadWriter
+	rw    goat.RpcReadWriter
 	codec encoding.Codec
 
 	streams map[uint64]chan *rpcheader.Rpc
@@ -166,7 +167,7 @@ func newHandler(
 	services map[string]*serviceInfo,
 	unaryInterceptor grpc.UnaryServerInterceptor,
 	streamInterceptor grpc.StreamServerInterceptor,
-	rw internal.RpcReadWriter,
+	rw goat.RpcReadWriter,
 ) *handler {
 	return &handler{
 		ctx:               ctx,

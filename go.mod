@@ -1,4 +1,4 @@
-module github.com/avos-io/grpc-websockets
+module github.com/avos-io/goat
 
 go 1.18
 
