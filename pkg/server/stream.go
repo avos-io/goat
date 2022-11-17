@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -19,6 +20,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+var errTrailersSent = errors.New("stream closed for writing (wrote trailers)")
+
 type ServerStream interface {
 	grpc.ServerStream
 	SetContext(context.Context)
@@ -32,16 +35,17 @@ type serverStream struct {
 
 	codec encoding.Codec
 
-	// rmu serializes access to r
+	// rmu serialises access to r
 	rmu sync.Mutex
 	r   func(context.Context) (*rpcheader.Rpc, error)
 
-	// wmu serialises access to w and protects headers, headersSent, and trailers
-	wmu         sync.Mutex
-	w           func(context.Context, *rpcheader.Rpc) error
-	headers     []metadata.MD
-	headersSent bool
-	trailers    []metadata.MD
+	// wmu serialises access to w and protects headers, headersSent, trailers, trailersSent
+	wmu          sync.Mutex
+	w            func(context.Context, *rpcheader.Rpc) error
+	headers      []metadata.MD
+	headersSent  bool
+	trailers     []metadata.MD
+	trailersSent bool
 }
 
 func newServerStream(
@@ -51,7 +55,6 @@ func newServerStream(
 	r func(context.Context) (*rpcheader.Rpc, error),
 	w func(context.Context, *rpcheader.Rpc) error,
 ) (ServerStream, error) {
-	log.Printf("newWebsocketServerStream: %d %s", id, method)
 	return &serverStream{
 		ctx:    ctx,
 		id:     id,
@@ -116,6 +119,11 @@ func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
 func (ss *serverStream) SetTrailer(md metadata.MD) {
 	ss.wmu.Lock()
 	defer ss.wmu.Unlock()
+
+	if ss.trailersSent {
+		log.Printf("SetTrailer: trailers already sent!")
+		return // I want to scream but I have no mouth
+	}
 
 	ss.trailers = append(ss.trailers, md)
 }
@@ -216,6 +224,11 @@ func (ss *serverStream) SetContext(ctx context.Context) {
 func (ss *serverStream) SendTrailer(trErr error) error {
 	ss.wmu.Lock()
 	defer ss.wmu.Unlock()
+
+	if ss.trailersSent {
+		return errTrailersSent
+	}
+	ss.trailersSent = true
 
 	tr := rpcheader.Rpc{
 		Id: ss.id,

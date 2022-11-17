@@ -39,8 +39,8 @@ tasks:
   gen-mocks:
     deps: [gen-proto]
     cmds:
-      - mockery --dir pkg/ --output ./gen/mocks --all --keeptree --with-expecter --case snake
-      - mockery --name "RpcReadWriter" --dir . --output ./gen/mocks --case snake
+      - mockery --with-expecter --dir pkg/ --output ./gen/mocks --all --keeptree --case snake
+      - mockery --with-expecter --name "RpcReadWriter" --dir . --output ./gen/mocks --case snake
     sources:
       - "pkg/**/*.go"
       - "goat.go"
