@@ -334,7 +334,10 @@ func (h *handler) newStream(
 
 	r := func(ctx context.Context) (*rpcheader.Rpc, error) {
 		select {
-		case msg := <-rCh:
+		case msg, ok := <-rCh:
+			if !ok {
+				return nil, fmt.Errorf("rCh closed")
+			}
 			return msg, nil
 		case <-ctx.Done():
 			return nil, ctx.Err()

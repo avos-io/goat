@@ -70,7 +70,6 @@ func (*TestService) ServerStream(
 	msg *rpcheader.IntMessage,
 	stream rpcheader.IntService_ServerStreamServer,
 ) error {
-
 	md, _ := metadata.FromIncomingContext(stream.Context())
 	for k, vs := range md {
 		for _, v := range vs {

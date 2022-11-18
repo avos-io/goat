@@ -10,7 +10,6 @@ import (
 	"github.com/avos-io/goat"
 	rpcheader "github.com/avos-io/goat/gen"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/status"
@@ -23,7 +22,7 @@ type RpcMultiplexer struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	streamCounter atomic.Uint64
+	streamCounter uint64
 	mutex         sync.Mutex
 
 	codec encoding.Codec
@@ -51,7 +50,7 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 	header *rpcheader.RequestHeader,
 	body *rpcheader.Body,
 ) (*rpcheader.Body, error) {
-	streamId := rm.streamCounter.Add(1)
+	streamId := atomic.AddUint64(&rm.streamCounter, 1)
 
 	respChan := make(chan *rpcheader.Rpc, 1)
 
@@ -89,11 +88,26 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 	}
 }
 
-func (rm *RpcMultiplexer) NewStream(
+type streamReadWriter struct {
+	rFn func(context.Context) (*rpcheader.Rpc, error)
+	wFn func(context.Context, *rpcheader.Rpc) error
+}
+
+func (srw *streamReadWriter) Read(ctx context.Context) (*rpcheader.Rpc, error) {
+	return srw.rFn(ctx)
+}
+
+func (srw *streamReadWriter) Write(ctx context.Context, rpc *rpcheader.Rpc) error {
+	return srw.wFn(ctx, rpc)
+}
+
+// NewStreamReadWriter returns a new goat.RpcReadWriter which will read and
+// write Rpcs using the returned id. Also returns a teardown function which will
+// close the stream.
+func (rm *RpcMultiplexer) NewStreamReadWriter(
 	ctx context.Context,
-	header *rpcheader.RequestHeader,
-) (grpc.ClientStream, error) {
-	streamId := rm.streamCounter.Add(1)
+) (uint64, goat.RpcReadWriter, func()) {
+	streamId := atomic.AddUint64(&rm.streamCounter, 1)
 
 	respChan := make(chan *rpcheader.Rpc, 1)
 	rm.registerHandler(streamId, respChan)
@@ -102,29 +116,21 @@ func (rm *RpcMultiplexer) NewStream(
 		rm.unregisterHandler(streamId)
 	}
 
-	r := func(ctx context.Context) (*rpcheader.Rpc, error) {
-		select {
-		case rpc := <-respChan:
-			// log.Printf("[client r]: %v", rpc)
-			return rpc, nil
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
+	rw := &streamReadWriter{
+		rFn: func(ctx context.Context) (*rpcheader.Rpc, error) {
+			select {
+			case rpc, ok := <-respChan:
+				if !ok {
+					return nil, fmt.Errorf("respChan closed")
+				}
+				return rpc, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		},
+		wFn: rm.rw.Write,
 	}
-
-	log.Printf("NewStream: stream %d", streamId)
-	rpc := rpcheader.Rpc{
-		Id:     streamId,
-		Header: header,
-	}
-	err := rm.rw.Write(ctx, &rpc)
-	if err != nil {
-		log.Printf("NewStream: failed to open, %v", err)
-		return nil, err
-	}
-
-	stream := newClientStream(ctx, rm, streamId, header.GetMethod(), r, rm.rw.Write, teardown)
-	return stream, nil
+	return streamId, rw, teardown
 }
 
 func (rm *RpcMultiplexer) readLoop() {

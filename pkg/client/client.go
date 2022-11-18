@@ -50,7 +50,6 @@ func (cc *ClientConn) Invoke(
 	if cc.unaryInterceptor != nil {
 		return cc.unaryInterceptor(ctx, method, args, reply, nil, cc.asInvoker, opts...)
 	}
-	grpc.WithChainUnaryInterceptor()
 	return cc.invoke(ctx, method, args, reply, opts...)
 }
 
@@ -123,18 +122,22 @@ func (cc *ClientConn) newStream(
 		log.Panic("opts unsupported")
 	}
 
-	headers := headersFromContext(ctx)
+	id, rw, teardown := cc.mp.NewStreamReadWriter(ctx)
 
-	header := rpcheader.RequestHeader{
-		Method:  method,
-		Headers: headers,
+	rpc := rpcheader.Rpc{
+		Id: id,
+		Header: &rpcheader.RequestHeader{
+			Method:  method,
+			Headers: headersFromContext(ctx),
+		},
 	}
-
-	stream, err := cc.mp.NewStream(ctx, &header)
+	err := rw.Write(ctx, &rpc)
 	if err != nil {
+		log.Printf("newStream: failed to open, %v", err)
 		return nil, err
 	}
-	return stream, nil
+
+	return newClientStream(ctx, id, method, rw, teardown), nil
 }
 
 func (cc *ClientConn) asStreamer(

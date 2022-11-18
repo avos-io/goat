@@ -2,10 +2,12 @@ package client
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
 	"sync"
 
+	"github.com/avos-io/goat"
 	rpcheader "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/internal"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
@@ -17,28 +19,28 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type ClientStream interface {
-	grpc.ClientStream
-	readLoop() error
-}
-
 func newClientStream(
 	ctx context.Context,
-	mp *RpcMultiplexer,
 	id uint64,
 	method string,
-	r func(context.Context) (*rpcheader.Rpc, error),
-	w func(context.Context, *rpcheader.Rpc) error,
+	rw goat.RpcReadWriter,
 	teardown func(),
-) ClientStream {
+) grpc.ClientStream {
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	csteardown := func() {
+		teardown()
+		cancel()
+	}
+
 	cs := &clientStream{
 		ctx:      ctx,
 		id:       id,
 		method:   method,
 		codec:    encoding.GetCodec(proto.Name),
-		r:        r,
-		w:        w,
-		teardown: teardown,
+		rw:       rw,
+		teardown: csteardown,
 		rCh:      make(chan *rpcheader.Body),
 	}
 
@@ -48,7 +50,6 @@ func newClientStream(
 	return cs
 }
 
-// TODO: should this live in multiplexer or here or separately?
 type clientStream struct {
 	ctx context.Context
 
@@ -56,20 +57,16 @@ type clientStream struct {
 	method string
 	codec  encoding.Codec
 
-	ready     sync.WaitGroup
-	header    metadata.MD
+	ready  sync.WaitGroup
+	header metadata.MD
+
+	rw goat.RpcReadWriter
+
+	mu        sync.Mutex // protects: done, headerErr, rErr, trailer
+	done      bool
 	headerErr error
-
-	// Serialises access to r and protects done, headerErr, and trailer
-	rmu     sync.Mutex
-	r       func(context.Context) (*rpcheader.Rpc, error)
-	done    bool
-	trailer *rpcheader.Trailer
-	rErr    error
-
-	// Serialises access to w
-	wmu sync.Mutex
-	w   func(context.Context, *rpcheader.Rpc) error
+	rErr      error
+	trailer   *rpcheader.Trailer
 
 	teardown func()
 
@@ -87,8 +84,8 @@ func (cs *clientStream) Header() (metadata.MD, error) {
 // It must only be called after stream.CloseAndRecv has returned, or
 // stream.Recv has returned a non-nil error (including io.EOF).
 func (cs *clientStream) Trailer() metadata.MD {
-	cs.rmu.Lock()
-	defer cs.rmu.Unlock()
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 
 	if cs.trailer.GetMetadata() == nil {
 		return nil
@@ -104,11 +101,6 @@ func (cs *clientStream) Trailer() metadata.MD {
 // when non-nil error is met. It is also not safe to call CloseSend
 // concurrently with SendMsg.
 func (cs *clientStream) CloseSend() error {
-	cs.wmu.Lock()
-	defer cs.wmu.Unlock()
-
-	log.Printf("client CloseSend")
-
 	tr := rpcheader.Rpc{
 		Id: cs.id,
 		Header: &rpcheader.RequestHeader{
@@ -121,7 +113,7 @@ func (cs *clientStream) CloseSend() error {
 		Trailer: &rpcheader.Trailer{},
 	}
 
-	return cs.w(cs.ctx, &tr)
+	return cs.rw.Write(cs.ctx, &tr)
 }
 
 // Context returns the context for this stream.
@@ -148,9 +140,6 @@ func (wcs *clientStream) Context() context.Context {
 // to call SendMsg on the same stream in different goroutines. It is also
 // not safe to call CloseSend concurrently with SendMsg.
 func (cs *clientStream) SendMsg(m interface{}) error {
-	cs.wmu.Lock()
-	defer cs.wmu.Unlock()
-
 	if done, err := cs.readErrorIfDone(); done {
 		return err
 	}
@@ -169,7 +158,7 @@ func (cs *clientStream) SendMsg(m interface{}) error {
 			Data: body,
 		},
 	}
-	err = cs.w(cs.ctx, &rpc)
+	err = cs.rw.Write(cs.ctx, &rpc)
 	if err != nil {
 		cs.teardown()
 		return err
@@ -193,7 +182,7 @@ func (cs *clientStream) RecvMsg(m interface{}) error {
 
 	select {
 	case <-cs.ctx.Done():
-		return statusErrorFromContextError(cs.ctx.Err())
+		return toStatusError(cs.ctx.Err())
 	case body, ok := <-cs.rCh:
 		if !ok {
 			done, err := cs.readErrorIfDone()
@@ -206,30 +195,50 @@ func (cs *clientStream) RecvMsg(m interface{}) error {
 	}
 }
 
+// readLoop reads from the given RpcReadWriter, filling out headers, trailers,
+// and recevied errors, and enqueing messages onto the internal rCh channel.
+//
+// On receiving an error or the end of the stream, the stream is closed down
+// for reading. Errors are held internally and will be yielded on the next
+// RecvMsg or SendMsg call, as per the gRPC semantics.
 func (cs *clientStream) readLoop() error {
+	log.Printf("ClientStream %d started", cs.id)
+
+	var rErr error
+	var trailer *rpcheader.Trailer
+
 	defer func() {
-		cs.rmu.Lock()
-		defer cs.rmu.Unlock()
+		cs.mu.Lock()
+		defer cs.mu.Unlock()
+
 		close(cs.rCh)
 		cs.teardown()
+
 		cs.done = true
+		cs.rErr = rErr
+		cs.trailer = trailer
+		log.Printf("ClientStream %d done: err=%v", cs.id, rErr)
 	}()
 
 	onReady := func(err error, headers metadata.MD) {
+		cs.mu.Lock()
+		defer cs.mu.Unlock()
+
 		cs.headerErr = err
 		cs.header = headers
 		cs.ready.Done()
 	}
 
 	for {
-		rpc, err := cs.r(cs.ctx)
+		rpc, err := cs.rw.Read(cs.ctx)
 		if err != nil {
-			onReady(statusErrorFromContextError(err), nil)
+			rErr = toStatusError(err)
+			onReady(rErr, nil)
 			return err
 		}
 
 		if cs.header == nil {
-			md, err := internal.ToMetadata(rpc.Header.Headers)
+			md, err := internal.ToMetadata(rpc.GetHeader().GetHeaders())
 			if err != nil {
 				return err
 			}
@@ -237,8 +246,8 @@ func (cs *clientStream) readLoop() error {
 		}
 
 		if done, err := errorIfDone(rpc); done {
-			cs.trailer = rpc.GetTrailer()
-			cs.rErr = err
+			trailer = rpc.GetTrailer()
+			rErr = err
 			return err
 		}
 
@@ -248,19 +257,33 @@ func (cs *clientStream) readLoop() error {
 
 		select {
 		case <-cs.ctx.Done():
-			err = statusErrorFromContextError(cs.ctx.Err())
-			cs.rErr = err
-			return err
+			rErr = toStatusError(cs.ctx.Err())
+			return rErr
 		case cs.rCh <- rpc.Body:
 			//
 		}
 	}
 }
 
-// statusErrorFromContextError converts a context error or wrapped context error
-// into a Status error.
-func statusErrorFromContextError(err error) error {
-	return status.FromContextError(err).Err()
+func (cs *clientStream) readErrorIfDone() (bool, error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	if !cs.done {
+		return false, nil
+	}
+
+	return true, cs.rErr
+}
+
+// toStatusError converts an error to one compatible with the grpc.status pkg.
+func toStatusError(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled) {
+		return status.FromContextError(err).Err()
+	}
+	stErr, _ := status.FromError(err)
+	return stErr.Err()
 }
 
 // errorIfDone returns a grpc/status compatible error if the given RPC is the
@@ -269,25 +292,14 @@ func errorIfDone(rpc *rpcheader.Rpc) (bool, error) {
 	if rpc.Trailer == nil {
 		return false, nil
 	}
-	st := rpc.Status
-	if st.Code == int32(codes.OK) {
+	st := rpc.GetStatus()
+	if st.GetCode() == int32(codes.OK) {
 		return true, io.EOF
 	}
 	sp := spb.Status{
-		Code:    st.Code,
-		Message: st.Message,
-		Details: st.Details,
+		Code:    st.GetCode(),
+		Message: st.GetMessage(),
+		Details: st.GetDetails(),
 	}
 	return true, status.FromProto(&sp).Err()
-}
-
-func (cs *clientStream) readErrorIfDone() (bool, error) {
-	cs.rmu.Lock()
-	defer cs.rmu.Unlock()
-
-	if !cs.done {
-		return false, nil
-	}
-
-	return true, cs.rErr
 }

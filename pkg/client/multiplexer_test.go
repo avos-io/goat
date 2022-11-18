@@ -3,10 +3,13 @@ package client
 import (
 	"context"
 	"testing"
+	"time"
 
 	rpcheader "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/gen/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
@@ -123,4 +126,154 @@ func TestUnaryMethodFailure(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, codes.InvalidArgument, s.Code())
 	assert.Equal(t, "Hello world", s.Message())
+}
+
+func TestNewStreamReadWriter(t *testing.T) {
+	t.Run("Write", func(t *testing.T) {
+		rw := mocks.NewRpcReadWriter(t)
+
+		unblockRead := make(chan time.Time)
+		rw.EXPECT().Read(mock.Anything).WaitUntil(unblockRead).Return(nil, errTest)
+
+		rm := NewRpcMultiplexer(rw)
+		defer rm.Close()
+
+		id, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		defer teardown()
+
+		ctx := context.Background()
+		rpc := &rpcheader.Rpc{
+			Id: id,
+			Header: &rpcheader.RequestHeader{
+				Method: "method",
+			},
+			Body: &rpcheader.Body{
+				Data: []byte{1, 2, 3, 4},
+			},
+		}
+
+		rw.EXPECT().Write(ctx, rpc).Return(nil)
+		require.NoError(t, srw.Write(ctx, rpc))
+
+		unblockRead <- time.Now()
+	})
+
+	t.Run("Read", func(t *testing.T) {
+		is := require.New(t)
+
+		tc := &testConn{}
+
+		rm := NewRpcMultiplexer(tc)
+		defer rm.Close()
+
+		readChan := make(chan readReturn)
+		tc.On("Read", mock.Anything).Return(readChan)
+
+		id, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		defer teardown()
+
+		rpc := &rpcheader.Rpc{
+			Id: id,
+			Header: &rpcheader.RequestHeader{
+				Method: "method",
+			},
+			Body: &rpcheader.Body{
+				Data: []byte{1, 2, 3, 4},
+			},
+		}
+
+		readChan <- readReturn{rpc, nil}
+
+		got, err := srw.Read(context.Background())
+		is.NoError(err)
+		is.Equal(rpc, got)
+	})
+
+	t.Run("Read: ignores other Rpcs", func(t *testing.T) {
+		is := require.New(t)
+
+		tc := &testConn{}
+
+		rm := NewRpcMultiplexer(tc)
+		defer rm.Close()
+
+		readChan := make(chan readReturn)
+		tc.On("Read", mock.Anything).Return(readChan)
+
+		id, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		defer teardown()
+
+		readChan <- readReturn{&rpcheader.Rpc{Id: 9001}, nil}
+		readChan <- readReturn{&rpcheader.Rpc{Id: 9002}, nil}
+		readChan <- readReturn{&rpcheader.Rpc{Id: 9003}, nil}
+
+		rpc := &rpcheader.Rpc{
+			Id: id,
+			Header: &rpcheader.RequestHeader{
+				Method: "method",
+			},
+			Body: &rpcheader.Body{
+				Data: []byte{1, 2, 3, 4},
+			},
+		}
+		readChan <- readReturn{rpc, nil}
+
+		got, err := srw.Read(context.Background())
+		is.NoError(err)
+		is.Equal(id, got.Id)
+	})
+
+	t.Run("Read: breaks on ctx done", func(t *testing.T) {
+		is := require.New(t)
+
+		tc := &testConn{}
+
+		rm := NewRpcMultiplexer(tc)
+		defer rm.Close()
+
+		readChan := make(chan readReturn)
+		tc.On("Read", mock.Anything).Return(readChan)
+
+		_, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		defer teardown()
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		done := make(chan struct{})
+		go func() {
+			got, err := srw.Read(ctx)
+			is.Equal(ctx.Err(), err)
+			is.Nil(got)
+			done <- struct{}{}
+		}()
+
+		cancel()
+
+		select {
+		case <-done:
+			return
+		case <-time.After(1 * time.Second):
+			t.Fatal("time out")
+		}
+	})
+
+	t.Run("Read: breaks after teardown", func(t *testing.T) {
+		is := require.New(t)
+
+		tc := &testConn{}
+
+		rm := NewRpcMultiplexer(tc)
+		defer rm.Close()
+
+		readChan := make(chan readReturn)
+		tc.On("Read", mock.Anything).Return(readChan)
+
+		_, srw, teardown := rm.NewStreamReadWriter(context.Background())
+
+		teardown()
+
+		got, err := srw.Read(context.Background())
+		is.Error(err)
+		is.Nil(got)
+	})
 }
