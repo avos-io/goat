@@ -50,12 +50,18 @@ func StreamInterceptor(i grpc.StreamServerInterceptor) ServerOption {
 }
 
 func NewServer(opts ...ServerOption) *Server {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	srv := Server{
+		ctx:      ctx,
+		cancel:   cancel,
 		services: make(map[string]*serviceInfo),
 	}
+
 	for _, opt := range opts {
 		opt.apply(&srv)
 	}
+
 	return &srv
 }
 
@@ -68,48 +74,32 @@ type serviceInfo struct {
 }
 
 type Server struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	services map[string]*serviceInfo // service name -> service info
 
 	unaryInterceptor  grpc.UnaryServerInterceptor
 	streamInterceptor grpc.StreamServerInterceptor
 }
 
-func parseRawMethod(sm string) (string, string, error) {
-	if sm != "" && sm[0] == '/' {
-		sm = sm[1:]
-	}
-	pos := strings.LastIndex(sm, "/")
-	if pos == -1 {
-		return "", "", fmt.Errorf("invalid method name %s", sm)
-	}
-	service := sm[:pos]
-	method := sm[pos+1:]
-	return service, method, nil
+func (s *Server) Stop() {
+	log.Printf("Server stop")
+	s.cancel()
 }
 
-// See grpc.ServiceRegistrar
+// grpc.ServiceRegistrar
 func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
-	// FIXME: copy-paste from grpc code
-
-	// https://github.com/grpc/grpc-go/blob/9127159caf5a3879dad56b795938fde3bc0a7eaa/server.go#L668
 	if ss != nil {
 		ht := reflect.TypeOf(sd.HandlerType).Elem()
 		st := reflect.TypeOf(ss)
 		if !st.Implements(ht) {
-			log.Fatalf(
-				"grpc: Server.RegisterService found the handler of type %v that does not satisfy %v",
-				st,
-				ht,
-			)
+			log.Fatalf("RegisterService handler of type %v does not satisfy %v", st, ht)
 		}
 	}
 
-	// https://github.com/grpc/grpc-go/blob/9127159caf5a3879dad56b795938fde3bc0a7eaa/server.go#L685
 	if _, ok := s.services[sd.ServiceName]; ok {
-		log.Fatalf(
-			"grpc: Server.RegisterService found duplicate service registration for %q",
-			sd.ServiceName,
-		)
+		log.Fatalf("RegisterService duplicate service registration for %q", sd.ServiceName)
 	}
 	info := &serviceInfo{
 		name:        sd.ServiceName,
@@ -129,98 +119,74 @@ func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 	s.services[sd.ServiceName] = info
 }
 
-func (s *Server) Serve(rw goat.RpcReadWriter) {
-	handler := newHandler(
-		context.Background(),
-		s.services,
-		s.unaryInterceptor,
-		s.streamInterceptor,
-		rw,
-	)
-	for {
-		err := handler.serveStep()
-		if err != nil {
-			log.Printf("handler error: %v", err)
-			return
-		}
-	}
+func (s *Server) Serve(rw goat.RpcReadWriter) error {
+	h := newHandler(s.ctx, s, rw)
+	h.serve()
+	return nil
 }
 
-// handler for a specific websocket connection
+// handler for a specific goat.RpcReadWriter
 type handler struct {
 	ctx context.Context
 
-	// FIXME: we shouldn't have to pass these through
-	services          map[string]*serviceInfo // service name -> service info
-	unaryInterceptor  grpc.UnaryServerInterceptor
-	streamInterceptor grpc.StreamServerInterceptor
+	srv *Server
 
 	rw    goat.RpcReadWriter
 	codec encoding.Codec
 
+	mu      sync.Mutex // protects streams
 	streams map[uint64]chan *rpcheader.Rpc
-	mutex   sync.Mutex
 }
 
-func newHandler(
-	ctx context.Context,
-	services map[string]*serviceInfo,
-	unaryInterceptor grpc.UnaryServerInterceptor,
-	streamInterceptor grpc.StreamServerInterceptor,
-	rw goat.RpcReadWriter,
-) *handler {
+func newHandler(ctx context.Context, srv *Server, rw goat.RpcReadWriter) *handler {
 	return &handler{
-		ctx:               ctx,
-		services:          services,
-		unaryInterceptor:  unaryInterceptor,
-		streamInterceptor: streamInterceptor,
-		rw:                rw,
-		codec:             encoding.GetCodec(proto.Name),
-		streams:           map[uint64]chan *rpcheader.Rpc{},
+		ctx:     ctx,
+		srv:     srv,
+		rw:      rw,
+		codec:   encoding.GetCodec(proto.Name),
+		streams: map[uint64]chan *rpcheader.Rpc{},
 	}
 }
 
-func (h *handler) serveStep() error {
-	log.Printf("server loop: read")
+func (h *handler) serve() error {
+	for {
+		rpc, err := h.rw.Read(h.ctx)
+		if err != nil {
+			log.Printf("read err: %v", err)
+			return err
+		}
 
-	rpc, err := h.rw.Read(h.ctx)
-	if err != nil {
-		log.Printf("read err %v", err)
-		return err
-	}
+		if rpc.GetHeader() == nil {
+			return fmt.Errorf("no header")
+		}
 
-	if rpc.GetHeader() == nil {
-		return fmt.Errorf("no header")
-	}
+		rawMethod := rpc.GetHeader().Method
+		service, method, err := parseRawMethod(rawMethod)
+		if err != nil {
+			log.Printf("failed to parse %s", rawMethod)
+			return err
+		}
 
-	rawMethod := rpc.GetHeader().Method
-	service, method, err := parseRawMethod(rawMethod)
-	if err != nil {
-		return err
+		si, known := h.srv.services[service]
+		if !known {
+			log.Printf("unknown service, %s", service)
+			continue
+		}
+		if md, ok := si.methods[method]; ok {
+			resp := h.processUnaryRpc(si, md, rpc)
+			h.rw.Write(h.ctx, resp)
+			continue
+		}
+		if sd, ok := si.streams[method]; ok {
+			h.processStreamingRpc(si, sd, rpc)
+			continue
+		}
+		log.Printf("unhandled method, %s %s", service, method)
 	}
-
-	log.Printf("got rpc req for: %s / %s", service, method)
-
-	// https://github.com/grpc/grpc-go/blob/9127159caf5a3879dad56b795938fde3bc0a7eaa/server.go#L1710
-	srv, known := h.services[service]
-	if !known {
-		log.Printf("unknown service, %s", service)
-		return nil
-	}
-	if md, ok := srv.methods[method]; ok {
-		resp := h.processUnaryRpc(srv, md, rpc)
-		h.rw.Write(h.ctx, resp)
-		return nil
-	}
-	if sd, ok := srv.streams[method]; ok {
-		return h.processStreamingRpc(srv, sd, rpc)
-	}
-	log.Printf("unhandled method, %s %s", service, method)
-	return nil
 }
 
 func (h *handler) processUnaryRpc(
-	srv *serviceInfo,
+	info *serviceInfo,
 	md *grpc.MethodDesc,
 	rpc *rpcheader.Rpc,
 ) *rpcheader.Rpc {
@@ -232,7 +198,7 @@ func (h *handler) processUnaryRpc(
 	}
 	defer cancel()
 
-	fullMethod := fmt.Sprintf("/%s/%s", srv.name, md.MethodName)
+	fullMethod := fmt.Sprintf("%s/%s", info.name, md.MethodName)
 	sts := NewUnaryServerTransportStream(fullMethod)
 	ctx = grpc.NewContextWithServerTransportStream(ctx, sts)
 
@@ -249,7 +215,7 @@ func (h *handler) processUnaryRpc(
 		return nil
 	}
 
-	resp, appErr := md.Handler(srv.serviceImpl, ctx, dec, h.unaryInterceptor)
+	resp, appErr := md.Handler(info.serviceImpl, ctx, dec, h.srv.unaryInterceptor)
 
 	respH := internal.ToKeyValue(sts.GetHeaders())
 	respHeader := &rpcheader.RequestHeader{
@@ -263,19 +229,14 @@ func (h *handler) processUnaryRpc(
 	var respStatus *rpcheader.ResponseStatus
 
 	if appErr != nil {
-		// https://github.com/grpc/grpc-go/blob/v1.50.0/server.go#L1320
-		appStatus, ok := status.FromError(appErr)
+		st, ok := status.FromError(appErr)
 		if !ok {
-			// Convert non-status application error to a status error with code
-			// Unknown, but handle context errors specifically.
-			appStatus = status.FromContextError(appErr)
-			//appErr = appStatus.Err()
+			st = status.FromContextError(appErr)
 		}
-
 		respStatus = &rpcheader.ResponseStatus{
-			Code:    appStatus.Proto().GetCode(),
-			Message: appStatus.Proto().GetMessage(),
-			Details: appStatus.Proto().GetDetails(),
+			Code:    st.Proto().GetCode(),
+			Message: st.Proto().GetMessage(),
+			Details: st.Proto().GetDetails(),
 		}
 	}
 
@@ -301,12 +262,12 @@ func (h *handler) processUnaryRpc(
 }
 
 func (h *handler) processStreamingRpc(
-	srv *serviceInfo,
+	info *serviceInfo,
 	sd *grpc.StreamDesc,
 	rpc *rpcheader.Rpc,
 ) error {
-	h.mutex.Lock()
-	defer h.mutex.Unlock()
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
 	if ch, ok := h.streams[rpc.Id]; ok {
 		ch <- rpc
@@ -317,12 +278,12 @@ func (h *handler) processStreamingRpc(
 	ch := make(chan *rpcheader.Rpc, 1)
 	h.streams[streamId] = ch
 
-	go h.newStream(srv, sd, rpc, streamId, ch)
+	go h.runStream(info, sd, rpc, streamId, ch)
 	return nil
 }
 
-func (h *handler) newStream(
-	srv *serviceInfo,
+func (h *handler) runStream(
+	info *serviceInfo,
 	sd *grpc.StreamDesc,
 	rpc *rpcheader.Rpc,
 	streamId uint64,
@@ -343,35 +304,37 @@ func (h *handler) newStream(
 			return nil, ctx.Err()
 		}
 	}
+	rw := goat.NewFnReadWriter(r, h.rw.Write)
 
 	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
 	if err != nil {
-		log.Panicf("failed to processUnaryRpc: %v", err)
+		log.Panicf("failed to create newStream: %v", err)
 	}
 	defer cancel()
 
-	stream, err := newServerStream(ctx, streamId, sd.StreamName, r, h.rw.Write)
+	si := &grpc.StreamServerInfo{
+		FullMethod:     fmt.Sprintf("%s/%s", info.name, sd.StreamName),
+		IsClientStream: sd.ClientStreams,
+		IsServerStream: sd.ServerStreams,
+	}
+
+	stream, err := newServerStream(ctx, streamId, si.FullMethod, rw)
 	if err != nil {
 		return err
 	}
 
-	info := &grpc.StreamServerInfo{
-		FullMethod:     fmt.Sprintf("/%s/%s", srv.name, sd.StreamName),
-		IsClientStream: sd.ClientStreams,
-		IsServerStream: sd.ServerStreams,
-	}
-	sts := NewServerTransportStream(info.FullMethod, stream)
+	sts := NewServerTransportStream(si.FullMethod, stream)
 	stream.SetContext(grpc.NewContextWithServerTransportStream(ctx, sts))
 
-	if h.streamInterceptor != nil {
-		err = h.streamInterceptor(srv.serviceImpl, stream, info, sd.Handler)
+	if h.srv.streamInterceptor != nil {
+		err = h.srv.streamInterceptor(info.serviceImpl, stream, si, sd.Handler)
 	} else {
-		err = sd.Handler(srv.serviceImpl, stream)
+		err = sd.Handler(info.serviceImpl, stream)
 	}
 
 	err = stream.SendTrailer(err)
 	if err != nil {
-		log.Printf("ServerStream SendTrailer, %v", err)
+		log.Printf("runStream trailer err, %v", err)
 		return err
 	}
 
@@ -379,8 +342,8 @@ func (h *handler) newStream(
 }
 
 func (h *handler) unregisterStream(id uint64) {
-	h.mutex.Lock()
-	defer h.mutex.Unlock()
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
 	if ch, ok := h.streams[id]; ok {
 		close(ch)
@@ -389,51 +352,74 @@ func (h *handler) unregisterStream(id uint64) {
 	delete(h.streams, id)
 }
 
-// contextFromHeaders returns a child of the given context that is populated
-// using the given headers. The headers are converted to incoming metadata that
-// can be retrieved via metadata.FromIncomingContext. If the headers contain a
-// gRPC timeout, that is used to create a timeout for the returned context.
+// contextFromHeaders returns a new incoming context with metadata populated
+// by the given request headers. If the given headers contain a GRPC-Timeout, it
+// is used to set the deadline on the returned context.
 func contextFromHeaders(
 	parent context.Context,
 	h *rpcheader.RequestHeader,
 ) (context.Context, context.CancelFunc, error) {
-	cancel := func() {} // default to no-op
+	cancel := func() {}
 	md, err := internal.ToMetadata(h.Headers)
 	if err != nil {
 		return parent, cancel, err
 	}
 	ctx := metadata.NewIncomingContext(parent, md)
 
-	// deadline propagation
-	timeout := ""
-	for _, rh := range h.Headers {
-		if rh.Key == "GRPC-Timeout" {
-			timeout = rh.Value
-		}
-	}
-	if timeout != "" {
-		// See GRPC wire format, "Timeout" component of request: https://grpc.io/docs/guides/wire.html#requests
-		suffix := timeout[len(timeout)-1]
-		if timeoutVal, err := strconv.ParseInt(timeout[:len(timeout)-1], 10, 64); err == nil {
-			var unit time.Duration
-			switch suffix {
-			case 'H':
-				unit = time.Hour
-			case 'M':
-				unit = time.Minute
-			case 'S':
-				unit = time.Second
-			case 'm':
-				unit = time.Millisecond
-			case 'u':
-				unit = time.Microsecond
-			case 'n':
-				unit = time.Nanosecond
-			}
-			if unit != 0 {
-				ctx, cancel = context.WithTimeout(ctx, time.Duration(timeoutVal)*unit)
+	for _, hdr := range h.Headers {
+		if hdr.Key == "GRPC-Timeout" {
+			if timeout, ok := parseGrpcTimeout(hdr.Value); ok {
+				ctx, cancel = context.WithTimeout(ctx, timeout)
+				break
 			}
 		}
 	}
 	return ctx, cancel, nil
+}
+
+// See https://grpc.io/docs/guides/wire.html#requests
+func parseGrpcTimeout(timeout string) (time.Duration, bool) {
+	suffix := timeout[len(timeout)-1]
+
+	val, err := strconv.ParseInt(timeout[:len(timeout)-1], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	getUnit := func(suffix byte) time.Duration {
+		switch suffix {
+		case 'H':
+			return time.Hour
+		case 'M':
+			return time.Minute
+		case 'S':
+			return time.Second
+		case 'm':
+			return time.Millisecond
+		case 'u':
+			return time.Microsecond
+		case 'n':
+			return time.Nanosecond
+		default:
+			return 0
+		}
+	}
+	unit := getUnit(suffix)
+	if unit == 0 {
+		return 0, false
+	}
+
+	return time.Duration(val) * unit, true
+}
+
+func parseRawMethod(sm string) (string, string, error) {
+	if sm != "" && sm[0] == '/' {
+		sm = sm[1:]
+	}
+	pos := strings.LastIndex(sm, "/")
+	if pos == -1 {
+		return "", "", fmt.Errorf("invalid method name %s", sm)
+	}
+	service := sm[:pos]
+	method := sm[pos+1:]
+	return service, method, nil
 }

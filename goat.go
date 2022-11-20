@@ -16,6 +16,26 @@ type RpcReadWriter interface {
 	Write(context.Context, *rpcproto.Rpc) error
 }
 
+func NewFnReadWriter(
+	r func(context.Context) (*rpcproto.Rpc, error),
+	w func(context.Context, *rpcproto.Rpc) error,
+) RpcReadWriter {
+	return &fnReadWriter{r, w}
+}
+
+type fnReadWriter struct {
+	r func(context.Context) (*rpcproto.Rpc, error)
+	w func(context.Context, *rpcproto.Rpc) error
+}
+
+func (frw *fnReadWriter) Read(ctx context.Context) (*rpcproto.Rpc, error) {
+	return frw.r(ctx)
+}
+
+func (frw *fnReadWriter) Write(ctx context.Context, rpc *rpcproto.Rpc) error {
+	return frw.w(ctx, rpc)
+}
+
 // NOTE: this wouldn't actually live in the same package, but it's here for now
 type WebsocketRpcReadWriter struct {
 	conn  *websocket.Conn

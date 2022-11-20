@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -11,6 +10,7 @@ import (
 	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 
+	"github.com/avos-io/goat"
 	rpcheader "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/internal"
 	"google.golang.org/grpc/codes"
@@ -19,8 +19,6 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
-
-var errTrailersSent = errors.New("stream closed for writing (wrote trailers)")
 
 type ServerStream interface {
 	grpc.ServerStream
@@ -35,13 +33,9 @@ type serverStream struct {
 
 	codec encoding.Codec
 
-	// rmu serialises access to r
-	rmu sync.Mutex
-	r   func(context.Context) (*rpcheader.Rpc, error)
+	rw goat.RpcReadWriter
 
-	// wmu serialises access to w and protects headers, headersSent, trailers, trailersSent
-	wmu          sync.Mutex
-	w            func(context.Context, *rpcheader.Rpc) error
+	mu           sync.Mutex // protects headers, headersSent, trailers, trailersSent
 	headers      []metadata.MD
 	headersSent  bool
 	trailers     []metadata.MD
@@ -52,16 +46,14 @@ func newServerStream(
 	ctx context.Context,
 	id uint64,
 	method string,
-	r func(context.Context) (*rpcheader.Rpc, error),
-	w func(context.Context, *rpcheader.Rpc) error,
+	rw goat.RpcReadWriter,
 ) (ServerStream, error) {
 	return &serverStream{
 		ctx:    ctx,
 		id:     id,
 		method: method,
 		codec:  encoding.GetCodec(proto.Name),
-		r:      r,
-		w:      w,
+		rw:     rw,
 	}, nil
 }
 
@@ -83,8 +75,8 @@ func (ss *serverStream) SendHeader(md metadata.MD) error {
 }
 
 func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
-	ss.wmu.Lock()
-	defer ss.wmu.Unlock()
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
 
 	if ss.headersSent {
 		return fmt.Errorf("headers already sent")
@@ -104,7 +96,7 @@ func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
 		},
 	}
 
-	err := ss.w(ss.ctx, &rpc)
+	err := ss.rw.Write(ss.ctx, &rpc)
 	if err != nil {
 		log.Printf("ServerStream setHeader: conn.Write %v", err)
 		return err
@@ -117,8 +109,8 @@ func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
 // SetTrailer sets the trailer metadata which will be sent with the RPC status.
 // When called more than once, all the provided metadata will be merged.
 func (ss *serverStream) SetTrailer(md metadata.MD) {
-	ss.wmu.Lock()
-	defer ss.wmu.Unlock()
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
 
 	if ss.trailersSent {
 		log.Printf("SetTrailer: trailers already sent!")
@@ -148,8 +140,8 @@ func (ss *serverStream) Context() context.Context {
 // calling RecvMsg on the same stream at the same time, but it is not safe
 // to call SendMsg on the same stream in different goroutines.
 func (ss *serverStream) SendMsg(m interface{}) error {
-	ss.wmu.Lock()
-	defer ss.wmu.Unlock()
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
 
 	body, err := ss.codec.Marshal(m)
 	if err != nil {
@@ -171,7 +163,7 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 		ss.headersSent = true
 	}
 
-	err = ss.w(ss.ctx, &rpc)
+	err = ss.rw.Write(ss.ctx, &rpc)
 	if err != nil {
 		log.Printf("ServerStream SendMsg: conn.Write %v", err)
 		return err
@@ -189,10 +181,7 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 // calling RecvMsg on the same stream at the same time, but it is not
 // safe to call RecvMsg on the same stream in different goroutines.
 func (ss *serverStream) RecvMsg(m interface{}) error {
-	ss.rmu.Lock()
-	defer ss.rmu.Unlock()
-
-	rpc, err := ss.r(ss.ctx)
+	rpc, err := ss.rw.Read(ss.ctx)
 	if err != nil {
 		return err
 	}
@@ -222,11 +211,11 @@ func (ss *serverStream) SetContext(ctx context.Context) {
 // SendTrailer sends the trailer for the stream, setting the Status to match the
 // given error. On completion, the stream is considered closed for writing.
 func (ss *serverStream) SendTrailer(trErr error) error {
-	ss.wmu.Lock()
-	defer ss.wmu.Unlock()
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
 
 	if ss.trailersSent {
-		return errTrailersSent
+		return fmt.Errorf("stream closed for writing (wrote trailers)")
 	}
 	ss.trailersSent = true
 
@@ -263,7 +252,7 @@ func (ss *serverStream) SendTrailer(trErr error) error {
 		tr.Status.Details = sp.GetDetails()
 	}
 
-	err := ss.w(ss.ctx, &tr)
+	err := ss.rw.Write(ss.ctx, &tr)
 	if err != nil {
 		log.Printf("ServerStream SendTrailer: conn.Write %v", err)
 		return err

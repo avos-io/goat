@@ -78,7 +78,7 @@ func (*TestService) ServerStream(
 	}
 
 	v := msg.GetValue()
-	log.Printf("SerServerStream recv %d", v)
+	log.Printf("ServerStream recv %d", v)
 	stream.SetHeader(metadata.New(map[string]string{
 		"test":  "hello",
 		"test2": "world",

@@ -29,7 +29,7 @@ func TestContext(t *testing.T) {
 		metadata.New(map[string]string{"foo": "1"}),
 	)
 	rw := mocks.NewRpcReadWriter(t)
-	stream, err := newServerStream(ctx, 0, "", rw.Read, rw.Write)
+	stream, err := newServerStream(ctx, 0, "", rw)
 	is.NoError(err)
 	is.Equal(ctx, stream.Context())
 
@@ -50,7 +50,7 @@ func TestHeaders(t *testing.T) {
 		streamId := uint64(9001)
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(ctx, streamId, method, rw.Read, rw.Write)
+		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
 		val := metadata.New(map[string]string{
@@ -76,7 +76,7 @@ func TestHeaders(t *testing.T) {
 		is := require.New(t)
 
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(context.Background(), 0, "", rw.Read, rw.Write)
+		stream, err := newServerStream(context.Background(), 0, "", rw)
 		is.NoError(err)
 
 		rw.EXPECT().Write(mock.Anything, mock.Anything).Return(errTest)
@@ -90,7 +90,7 @@ func TestHeaders(t *testing.T) {
 		streamId := uint64(9001)
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(ctx, streamId, method, rw.Read, rw.Write)
+		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
 		val1 := metadata.New(map[string]string{"1": "one"})
@@ -135,7 +135,7 @@ func TestHeaders(t *testing.T) {
 		streamId := uint64(9001)
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(ctx, streamId, method, rw.Read, rw.Write)
+		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
 		val := metadata.New(map[string]string{"foo": "bar"})
@@ -178,7 +178,7 @@ func TestHeaders(t *testing.T) {
 		streamId := uint64(9001)
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(ctx, streamId, method, rw.Read, rw.Write)
+		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
 		val := metadata.New(map[string]string{"foo": "bar"})
@@ -207,7 +207,7 @@ func TestTrailers(t *testing.T) {
 		streamId := uint64(9001)
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(ctx, streamId, method, rw.Read, rw.Write)
+		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
 		tr1 := metadata.New(map[string]string{"1": "one"})
@@ -245,7 +245,7 @@ func TestTrailers(t *testing.T) {
 		streamId := uint64(9001)
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(ctx, streamId, method, rw.Read, rw.Write)
+		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
 		tr := metadata.New(map[string]string{"1": "one"})
@@ -271,7 +271,7 @@ func TestTrailers(t *testing.T) {
 		streamId := uint64(9001)
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(ctx, streamId, method, rw.Read, rw.Write)
+		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
 		tr := metadata.New(map[string]string{"1": "one"})
@@ -290,7 +290,7 @@ func TestSendMsg(t *testing.T) {
 		streamId := uint64(9001)
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(ctx, streamId, method, rw.Read, rw.Write)
+		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
 		codec := encoding.GetCodec(proto.Name)
@@ -316,7 +316,7 @@ func TestSendMsg(t *testing.T) {
 		streamId := uint64(9001)
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(ctx, streamId, method, rw.Read, rw.Write)
+		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
 		rw.EXPECT().Write(ctx, mock.Anything).Return(errTest)
@@ -333,7 +333,7 @@ func TestRecvMsg(t *testing.T) {
 		streamId := uint64(9001)
 		method := "method"
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(ctx, streamId, method, rw.Read, rw.Write)
+		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
 		codec := encoding.GetCodec(proto.Name)
@@ -371,7 +371,7 @@ func TestRecvMsg(t *testing.T) {
 		streamId := uint64(9001)
 		method := "method"
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(ctx, streamId, method, rw.Read, rw.Write)
+		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
 		rw.EXPECT().Read(ctx).Return(nil, errTest)
@@ -387,7 +387,7 @@ func TestRecvMsg(t *testing.T) {
 		streamId := uint64(9001)
 		method := "method"
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(ctx, streamId, method, rw.Read, rw.Write)
+		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
 		rpc := rpcheader.Rpc{
@@ -415,7 +415,7 @@ func TestRecvMsg(t *testing.T) {
 		streamId := uint64(9001)
 		method := "method"
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(ctx, streamId, method, rw.Read, rw.Write)
+		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
 		rpc := rpcheader.Rpc{

@@ -88,19 +88,6 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 	}
 }
 
-type streamReadWriter struct {
-	rFn func(context.Context) (*rpcheader.Rpc, error)
-	wFn func(context.Context, *rpcheader.Rpc) error
-}
-
-func (srw *streamReadWriter) Read(ctx context.Context) (*rpcheader.Rpc, error) {
-	return srw.rFn(ctx)
-}
-
-func (srw *streamReadWriter) Write(ctx context.Context, rpc *rpcheader.Rpc) error {
-	return srw.wFn(ctx, rpc)
-}
-
 // NewStreamReadWriter returns a new goat.RpcReadWriter which will read and
 // write Rpcs using the returned id. Also returns a teardown function which will
 // close the stream.
@@ -116,8 +103,8 @@ func (rm *RpcMultiplexer) NewStreamReadWriter(
 		rm.unregisterHandler(streamId)
 	}
 
-	rw := &streamReadWriter{
-		rFn: func(ctx context.Context) (*rpcheader.Rpc, error) {
+	rw := goat.NewFnReadWriter(
+		func(ctx context.Context) (*rpcheader.Rpc, error) {
 			select {
 			case rpc, ok := <-respChan:
 				if !ok {
@@ -128,8 +115,8 @@ func (rm *RpcMultiplexer) NewStreamReadWriter(
 				return nil, ctx.Err()
 			}
 		},
-		wFn: rm.rw.Write,
-	}
+		rm.rw.Write,
+	)
 	return streamId, rw, teardown
 }
 

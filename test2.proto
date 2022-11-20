@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package grpcwebsockets;
+option go_package = "./rpcheader";
+
+// TODO: delete me!
+
+message IntMessage {
+    int32 value = 1;
+}
+
+message AddRequest {
+    int32 a = 1;
+    int32 b = 2;
+}
+
+service IntService {
+    rpc Add(AddRequest) returns (IntMessage) {}
+
+    rpc BidiStream(stream IntMessage) returns (stream IntMessage) {}
+    rpc ServerStream(IntMessage) returns (stream IntMessage) {}
+    rpc ClientStream(stream IntMessage) returns (IntMessage) {}
+}
