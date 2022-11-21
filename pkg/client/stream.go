@@ -224,9 +224,11 @@ func (cs *clientStream) readLoop() error {
 		cs.mu.Lock()
 		defer cs.mu.Unlock()
 
-		cs.headerErr = err
-		cs.header = headers
-		cs.ready.Done()
+		if cs.header == nil {
+			cs.headerErr = err
+			cs.header = headers
+			cs.ready.Done()
+		}
 	}
 
 	for {
