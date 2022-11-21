@@ -180,7 +180,7 @@ func TestClientStream(t *testing.T) {
 }
 
 func TestBidiStream(t *testing.T) {
-	t.Run("OK", func(t *testing.T) {
+	t.Run("OK: client messages first", func(t *testing.T) {
 		is := require.New(t)
 
 		service := mocks.NewTestServiceServer(t)
@@ -216,6 +216,44 @@ func TestBidiStream(t *testing.T) {
 		is.NoError(stream.CloseSend())
 	})
 
+	t.Run("OK: server messages first", func(t *testing.T) {
+		is := require.New(t)
+
+		service := mocks.NewTestServiceServer(t)
+		service.EXPECT().BidiStream(mock.Anything).
+			Run(
+				func(stream testproto.TestService_BidiStreamServer) {
+					for i := 0; i < 10; i++ {
+						err := stream.Send(&testproto.Msg{Value: int32(i)})
+						is.NoError(err)
+
+						msg, err := stream.Recv()
+						is.NoError(err)
+						is.NotNil(msg.GetValue())
+					}
+				},
+			).
+			Return(nil)
+
+		client, ctx, teardown := setup(service)
+		defer teardown()
+
+		stream, err := client.BidiStream(ctx)
+		is.NoError(err)
+		is.NotNil(stream)
+
+		for {
+			got, err := stream.Recv()
+			if err == io.EOF {
+				return
+			}
+			is.NoError(err)
+			is.NotNil(got)
+			err = stream.Send(&testproto.Msg{Value: got.GetValue()})
+			is.NoError(err)
+		}
+	})
+
 	t.Run("Error", func(t *testing.T) {
 		is := require.New(t)
 
@@ -233,6 +271,82 @@ func TestBidiStream(t *testing.T) {
 		reply, err := stream.Recv()
 		is.Error(err)
 		is.Nil(reply)
+	})
+}
+
+func TestStreamHeaders(t *testing.T) {
+	t.Run("Headers sent with SendHeader", func(t *testing.T) {
+		is := require.New(t)
+
+		service := mocks.NewTestServiceServer(t)
+		service.EXPECT().BidiStream(mock.Anything).
+			Run(
+				func(stream testproto.TestService_BidiStreamServer) {
+					stream.SetHeader(metadata.New(map[string]string{"one": "1"}))
+					stream.SetHeader(metadata.New(map[string]string{"two": "2"}))
+					stream.SendHeader(metadata.New(map[string]string{"three": "3"}))
+
+					msg, err := stream.Recv()
+					is.NoError(err)
+					is.NotNil(msg)
+					err = stream.Send(&testproto.Msg{Value: msg.GetValue()})
+					is.NoError(err)
+				},
+			).
+			Return(nil)
+
+		client, ctx, teardown := setup(service)
+		defer teardown()
+
+		stream, err := client.BidiStream(ctx)
+		is.NoError(err)
+		is.NotNil(stream)
+
+		md, err := stream.Header()
+		is.NoError(err)
+
+		is.Len(md, 3)
+		is.Equal("1", md["one"][0])
+		is.Equal("2", md["two"][0])
+		is.Equal("3", md["three"][0])
+
+		stream.Send(&testproto.Msg{Value: int32(0)})
+		stream.Recv()
+	})
+
+	t.Run("Headers sent on first message", func(t *testing.T) {
+		is := require.New(t)
+
+		service := mocks.NewTestServiceServer(t)
+		service.EXPECT().BidiStream(mock.Anything).
+			Run(
+				func(stream testproto.TestService_BidiStreamServer) {
+					stream.SetHeader(metadata.New(map[string]string{"one": "1"}))
+					stream.SetHeader(metadata.New(map[string]string{"two": "2"}))
+					stream.SetHeader(metadata.New(map[string]string{"three": "3"}))
+
+					err := stream.Send(&testproto.Msg{Value: 13})
+					is.NoError(err)
+				},
+			).
+			Return(nil)
+
+		client, ctx, teardown := setup(service)
+		defer teardown()
+
+		stream, err := client.BidiStream(ctx)
+		is.NoError(err)
+		is.NotNil(stream)
+
+		md, err := stream.Header()
+		is.NoError(err)
+
+		is.Len(md, 3)
+		is.Equal("1", md["one"][0])
+		is.Equal("2", md["two"][0])
+		is.Equal("3", md["three"][0])
+
+		stream.Recv()
 	})
 }
 
