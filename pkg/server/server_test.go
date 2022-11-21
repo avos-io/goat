@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -12,10 +11,10 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 
-	"github.com/avos-io/goat"
 	rpcheader "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/gen/testproto/mocks"
+	"github.com/avos-io/goat/internal/testutil"
 )
 
 func TestNew(t *testing.T) {
@@ -27,13 +26,11 @@ func TestNew(t *testing.T) {
 func TestStop(t *testing.T) {
 	srv := NewServer()
 
-	conn := testConn{}
-	blockForever := make(chan readReturn)
-	conn.On("Read", mock.Anything).Return(blockForever)
+	conn := testutil.NewTestConn()
 
 	done := make(chan struct{}, 1)
 	go func() {
-		srv.Serve(&conn)
+		srv.Serve(conn)
 		done <- struct{}{}
 	}()
 
@@ -62,16 +59,16 @@ func TestUnary(t *testing.T) {
 
 		testproto.RegisterTestServiceServer(srv, service)
 
-		conn, readChan, writeChan := setupTestConn()
+		conn := testutil.NewTestConn()
 
 		go func() {
 			srv.Serve(conn)
 		}()
 
-		readChan <- readReturn{wrapRpc(id, method, &sent), nil}
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent), Err: nil}
 
 		select {
-		case w := <-writeChan:
+		case w := <-conn.WriteChan:
 			is.Equal(id, w.GetId())
 			is.Equal(method, w.GetHeader().GetMethod())
 			is.NotNil(w.GetBody())
@@ -101,16 +98,16 @@ func TestUnary(t *testing.T) {
 
 		testproto.RegisterTestServiceServer(srv, service)
 
-		conn, readChan, writeChan := setupTestConn()
+		conn := testutil.NewTestConn()
 
 		go func() {
 			srv.Serve(conn)
 		}()
 
-		readChan <- readReturn{wrapRpc(id, method, &sent), nil}
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent), Err: nil}
 
 		select {
-		case w := <-writeChan:
+		case w := <-conn.WriteChan:
 			is.NotEqual(int32(codes.OK), w.GetStatus().GetCode())
 			is.NotEmpty(w.GetStatus().GetMessage())
 			is.Equal(id, w.GetId())
@@ -151,41 +148,47 @@ func TestServerStream(t *testing.T) {
 
 		testproto.RegisterTestServiceServer(srv, service)
 
-		conn, readChan, writeChan := setupTestConn()
+		conn := testutil.NewTestConn()
 
 		go func() {
 			srv.Serve(conn)
 		}()
 
 		// Open stream
-		readChan <- readReturn{&rpcheader.Rpc{
-			Id: id,
-			Header: &rpcheader.RequestHeader{
-				Method: method,
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &rpcheader.Rpc{
+				Id: id,
+				Header: &rpcheader.RequestHeader{
+					Method: method,
+				},
 			},
-		}, nil}
+			Err: nil,
+		}
 
 		// SendMsg
-		readChan <- readReturn{wrapRpc(id, method, &sent), nil}
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent), Err: nil}
 
 		// CloseSend
-		readChan <- readReturn{&rpcheader.Rpc{
-			Id: id,
-			Header: &rpcheader.RequestHeader{
-				Method: method,
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &rpcheader.Rpc{
+				Id: id,
+				Header: &rpcheader.RequestHeader{
+					Method: method,
+				},
+				Status: &rpcheader.ResponseStatus{
+					Code:    int32(codes.OK),
+					Message: codes.OK.String(),
+				},
+				Trailer: &rpcheader.Trailer{},
 			},
-			Status: &rpcheader.ResponseStatus{
-				Code:    int32(codes.OK),
-				Message: codes.OK.String(),
-			},
-			Trailer: &rpcheader.Trailer{},
-		}, nil}
+			Err: nil,
+		}
 
 		// Read off replies
 		exp := 1
 		for {
 			select {
-			case got := <-writeChan:
+			case got := <-conn.WriteChan:
 				if exp <= len(expected) {
 					is.Equal(int32(exp), unwrapBody(got).GetValue())
 					exp++
@@ -241,47 +244,4 @@ func unwrapBody(rpc *rpcheader.Rpc) *testproto.Msg {
 		panic(err)
 	}
 	return &out
-}
-
-type testConn struct {
-	mock.Mock
-}
-
-type readReturn struct {
-	rpc *rpcheader.Rpc
-	err error
-}
-
-func (c *testConn) Read(ctx context.Context) (*rpcheader.Rpc, error) {
-	args := c.Called(ctx)
-	ch := args.Get(0).(chan readReturn)
-	select {
-	case rr := <-ch:
-		return rr.rpc, rr.err
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-}
-
-func (c *testConn) Write(ctx context.Context, rpc *rpcheader.Rpc) error {
-	args := c.Called(ctx, rpc)
-	err := args.Error(0)
-	return err
-}
-
-func setupTestConn() (goat.RpcReadWriter, chan readReturn, chan *rpcheader.Rpc) {
-	conn := testConn{}
-
-	readChan := make(chan readReturn)
-	conn.On("Read", mock.Anything).Return(readChan)
-
-	writeChan := make(chan *rpcheader.Rpc)
-	conn.On("Write", mock.Anything, mock.Anything).
-		Return(nil).
-		Run(func(args mock.Arguments) {
-			got, _ := args.Get(1).(*rpcheader.Rpc)
-			writeChan <- got
-		})
-
-	return &conn, readChan, writeChan
 }
