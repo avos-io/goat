@@ -17,6 +17,7 @@ import (
 
 	rpcheader "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/gen/mocks"
+	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/internal"
 )
 
@@ -194,7 +195,7 @@ func TestSendMsg(t *testing.T) {
 
 		stream := newClientStream(context.Background(), id, method, rw, func() {})
 
-		body := rpcheader.IntMessage{Value: 42}
+		body := testproto.Msg{Value: 42}
 		bodyBytes, err := encoding.GetCodec(proto.Name).Marshal(&body)
 		is.NoError(err)
 
@@ -232,7 +233,7 @@ func TestSendMsg(t *testing.T) {
 
 		rw.EXPECT().Write(mock.Anything, mock.Anything).Return(errTest)
 
-		is.Error(stream.SendMsg(&rpcheader.IntMessage{Value: 42}))
+		is.Error(stream.SendMsg(&testproto.Msg{Value: 42}))
 		is.True(teardownCalled)
 
 		unblockRead <- time.Now()
@@ -253,7 +254,7 @@ func TestSendMsg(t *testing.T) {
 		)
 
 		<-readDone
-		is.Error(stream.SendMsg(&rpcheader.IntMessage{Value: 42}))
+		is.Error(stream.SendMsg(&testproto.Msg{Value: 42}))
 		rw.AssertNotCalled(t, "Write")
 	})
 
@@ -282,7 +283,7 @@ func TestSendMsg(t *testing.T) {
 		).Once()
 
 		<-readDone
-		is.Error(stream.SendMsg(&rpcheader.IntMessage{Value: 42}))
+		is.Error(stream.SendMsg(&testproto.Msg{Value: 42}))
 		rw.AssertNotCalled(t, "Write")
 	})
 }
@@ -294,7 +295,7 @@ func TestRecvMsg(t *testing.T) {
 		rw := mocks.NewRpcReadWriter(t)
 		stream := newClientStream(context.Background(), 42, "method", rw, func() {})
 
-		msg := rpcheader.IntMessage{Value: 9001}
+		msg := testproto.Msg{Value: 9001}
 		msgBytes, err := encoding.GetCodec(proto.Name).Marshal(&msg)
 		is.NoError(err)
 
@@ -314,7 +315,7 @@ func TestRecvMsg(t *testing.T) {
 		rw.EXPECT().Read(mock.Anything).Return(rpc, nil).Once()
 		rw.EXPECT().Read(mock.Anything).Return(tr, nil).Once()
 
-		var got rpcheader.IntMessage
+		var got testproto.Msg
 		is.NoError(stream.RecvMsg(&got))
 		is.Equal(msg.Value, got.Value)
 
@@ -337,7 +338,7 @@ func TestRecvMsg(t *testing.T) {
 
 		<-readDone
 
-		var got rpcheader.IntMessage
+		var got testproto.Msg
 		is.Error(stream.RecvMsg(&got))
 		rw.AssertNotCalled(t, "Write")
 	})
@@ -365,7 +366,7 @@ func TestRecvMsg(t *testing.T) {
 
 		<-readDone
 
-		var got rpcheader.IntMessage
+		var got testproto.Msg
 		is.Error(stream.RecvMsg(&got))
 	})
 }

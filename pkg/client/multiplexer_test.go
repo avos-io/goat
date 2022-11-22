@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	rpcheader "github.com/avos-io/goat/gen"
-	"github.com/avos-io/goat/gen/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -14,6 +12,10 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/status"
+
+	rpcheader "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/gen/mocks"
+	"github.com/avos-io/goat/gen/testproto"
 )
 
 type testConn struct {
@@ -70,7 +72,7 @@ func TestUnaryMethodSuccess(t *testing.T) {
 	tc.On("Read", mock.Anything).Return(readChan)
 	tc.On("Write", mock.Anything, mock.Anything).Return(nil).
 		Run(func(args mock.Arguments) {
-			readChan <- readReturn{makeResponse(1, &rpcheader.IntMessage{Value: 42}), nil}
+			readChan <- readReturn{makeResponse(1, &testproto.Msg{Value: 42}), nil}
 		})
 
 	valBytes, err := rm.CallUnaryMethod(
@@ -84,7 +86,7 @@ func TestUnaryMethodSuccess(t *testing.T) {
 
 	codec := encoding.GetCodec(proto.Name)
 
-	var val rpcheader.IntMessage
+	var val testproto.Msg
 	codec.Unmarshal(valBytes.Data, &val)
 
 	assert.Equal(t, int32(42), val.Value)

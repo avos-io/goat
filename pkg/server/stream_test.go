@@ -6,9 +6,6 @@ import (
 	"io"
 	"testing"
 
-	rpcheader "github.com/avos-io/goat/gen"
-	"github.com/avos-io/goat/gen/mocks"
-	"github.com/avos-io/goat/internal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -17,6 +14,11 @@ import (
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	rpcheader "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/gen/mocks"
+	"github.com/avos-io/goat/gen/testproto"
+	"github.com/avos-io/goat/internal"
 )
 
 var errTest = errors.New("EXPECTED TEST ERROR")
@@ -151,7 +153,7 @@ func TestHeaders(t *testing.T) {
 			},
 		)).Return(nil)
 
-		is.NoError(stream.SendMsg(&rpcheader.IntMessage{}))
+		is.NoError(stream.SendMsg(&testproto.Msg{}))
 
 		// Can't set after sending
 		is.Error(stream.SetHeader(val))
@@ -168,7 +170,7 @@ func TestHeaders(t *testing.T) {
 					len(rpc.GetHeader().GetHeaders()) == 0
 			},
 		)).Return(nil)
-		is.NoError(stream.SendMsg(&rpcheader.IntMessage{}))
+		is.NoError(stream.SendMsg(&testproto.Msg{}))
 	})
 
 	t.Run("SendHeader on trailer if not already sent", func(t *testing.T) {
@@ -294,7 +296,7 @@ func TestSendMsg(t *testing.T) {
 		is.NoError(err)
 
 		codec := encoding.GetCodec(proto.Name)
-		m := rpcheader.IntMessage{Value: 42}
+		m := testproto.Msg{Value: 42}
 		mData, err := codec.Marshal(&m)
 		is.NoError(err)
 
@@ -321,7 +323,7 @@ func TestSendMsg(t *testing.T) {
 
 		rw.EXPECT().Write(ctx, mock.Anything).Return(errTest)
 
-		is.Equal(errTest, stream.SendMsg(&rpcheader.IntMessage{Value: 42}))
+		is.Equal(errTest, stream.SendMsg(&testproto.Msg{Value: 42}))
 	})
 }
 
@@ -337,7 +339,7 @@ func TestRecvMsg(t *testing.T) {
 		is.NoError(err)
 
 		codec := encoding.GetCodec(proto.Name)
-		sent := rpcheader.IntMessage{Value: 42}
+		sent := testproto.Msg{Value: 42}
 
 		data, err := codec.Marshal(&sent)
 		is.NoError(err)
@@ -358,7 +360,7 @@ func TestRecvMsg(t *testing.T) {
 
 		rw.EXPECT().Read(ctx).Return(&rpc, nil)
 
-		var got rpcheader.IntMessage
+		var got testproto.Msg
 		is.NoError(stream.RecvMsg(&got))
 
 		is.Equal(sent.GetValue(), got.GetValue())
@@ -376,7 +378,7 @@ func TestRecvMsg(t *testing.T) {
 
 		rw.EXPECT().Read(ctx).Return(nil, errTest)
 
-		var got rpcheader.IntMessage
+		var got testproto.Msg
 		is.Equal(errTest, stream.RecvMsg(&got))
 	})
 
@@ -404,7 +406,7 @@ func TestRecvMsg(t *testing.T) {
 
 		rw.EXPECT().Read(ctx).Return(&rpc, nil)
 
-		var got rpcheader.IntMessage
+		var got testproto.Msg
 		is.Equal(io.EOF, stream.RecvMsg(&got))
 	})
 
@@ -432,7 +434,7 @@ func TestRecvMsg(t *testing.T) {
 
 		rw.EXPECT().Read(ctx).Return(&rpc, nil)
 
-		var got rpcheader.IntMessage
+		var got testproto.Msg
 		is.Equal(
 			status.Error(codes.Internal, codes.Internal.String()),
 			stream.RecvMsg(&got),
