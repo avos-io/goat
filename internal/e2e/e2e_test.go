@@ -350,6 +350,41 @@ func TestStreamHeaders(t *testing.T) {
 	})
 }
 
+func TestStreamTrailers(t *testing.T) {
+	is := require.New(t)
+
+	service := mocks.NewTestServiceServer(t)
+	service.EXPECT().ClientStream(mock.Anything).
+		Run(func(stream testproto.TestService_ClientStreamServer) {
+			md := metadata.New(map[string]string{"foo": "bar"})
+			stream.SetTrailer(md)
+			_, err := stream.Recv()
+			if err == io.EOF {
+				stream.SendAndClose(&testproto.Msg{Value: 1})
+				return
+			}
+			is.NoError(err)
+		}).
+		Return(nil)
+
+	client, ctx, teardown := setup(service)
+	defer teardown()
+
+	stream, err := client.ClientStream(ctx)
+	is.NoError(err)
+	is.NotNil(stream)
+
+	err = stream.Send(&testproto.Msg{Value: int32(1)})
+	is.NoError(err)
+
+	_, err = stream.CloseAndRecv()
+	is.Equal(io.EOF, err)
+
+	trailer := stream.Trailer()
+	is.NotNil(trailer)
+	is.Equal(trailer["foo"][0], "bar")
+}
+
 func TestUnaryInterceptor(t *testing.T) {
 	is := require.New(t)
 
