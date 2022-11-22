@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/avos-io/goat"
-	rpcheader "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/internal"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding"
@@ -73,11 +73,11 @@ func (cc *ClientConn) invoke(
 	}
 
 	replyBody, err := cc.mp.CallUnaryMethod(ctx,
-		&rpcheader.RequestHeader{
+		&wrapped.RequestHeader{
 			Method:  method,
 			Headers: headers,
 		},
-		&rpcheader.Body{
+		&wrapped.Body{
 			Data: body,
 		},
 	)
@@ -124,9 +124,9 @@ func (cc *ClientConn) newStream(
 
 	id, rw, teardown := cc.mp.NewStreamReadWriter(ctx)
 
-	rpc := rpcheader.Rpc{
+	rpc := wrapped.Rpc{
 		Id: id,
-		Header: &rpcheader.RequestHeader{
+		Header: &wrapped.RequestHeader{
 			Method:  method,
 			Headers: headersFromContext(ctx),
 		},
@@ -154,8 +154,8 @@ func (cc *ClientConn) asStreamer(
 // on the specified context. GRPC clients store outgoing metadata into the
 // context, which is translated into headers. Also, a context deadline will be
 // propagated to the server via GRPC timeout metadata.
-func headersFromContext(ctx context.Context) []*rpcheader.KeyValue {
-	h := []*rpcheader.KeyValue{}
+func headersFromContext(ctx context.Context) []*wrapped.KeyValue {
+	h := []*wrapped.KeyValue{}
 	if md, ok := metadata.FromOutgoingContext(ctx); ok {
 		h = append(h, internal.ToKeyValue(md)...)
 	}
@@ -165,7 +165,7 @@ func headersFromContext(ctx context.Context) []*rpcheader.KeyValue {
 		if ms <= 0 {
 			ms = 1
 		}
-		h = append(h, &rpcheader.KeyValue{
+		h = append(h, &wrapped.KeyValue{
 			Key:   "GRPC-Timeout",
 			Value: fmt.Sprintf("%dm", ms),
 		})

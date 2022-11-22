@@ -7,9 +7,6 @@ import (
 	"log"
 	"sync"
 
-	"github.com/avos-io/goat"
-	rpcheader "github.com/avos-io/goat/gen"
-	"github.com/avos-io/goat/internal"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -17,6 +14,10 @@ import (
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/avos-io/goat"
+	wrapped "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/internal"
 )
 
 func newClientStream(
@@ -41,7 +42,7 @@ func newClientStream(
 		codec:    encoding.GetCodec(proto.Name),
 		rw:       rw,
 		teardown: csteardown,
-		rCh:      make(chan *rpcheader.Body),
+		rCh:      make(chan *wrapped.Body),
 	}
 
 	cs.ready.Add(1)
@@ -66,11 +67,11 @@ type clientStream struct {
 	done      bool
 	headerErr error
 	rErr      error
-	trailer   *rpcheader.Trailer
+	trailer   *wrapped.Trailer
 
 	teardown func()
 
-	rCh chan *rpcheader.Body
+	rCh chan *wrapped.Body
 }
 
 // Header returns the header metadata received from the server if there
@@ -101,16 +102,16 @@ func (cs *clientStream) Trailer() metadata.MD {
 // when non-nil error is met. It is also not safe to call CloseSend
 // concurrently with SendMsg.
 func (cs *clientStream) CloseSend() error {
-	tr := rpcheader.Rpc{
+	tr := wrapped.Rpc{
 		Id: cs.id,
-		Header: &rpcheader.RequestHeader{
+		Header: &wrapped.RequestHeader{
 			Method: cs.method,
 		},
-		Status: &rpcheader.ResponseStatus{
+		Status: &wrapped.ResponseStatus{
 			Code:    int32(codes.OK),
 			Message: codes.OK.String(),
 		},
-		Trailer: &rpcheader.Trailer{},
+		Trailer: &wrapped.Trailer{},
 	}
 
 	return cs.rw.Write(cs.ctx, &tr)
@@ -149,12 +150,12 @@ func (cs *clientStream) SendMsg(m interface{}) error {
 		cs.teardown()
 		return err
 	}
-	rpc := rpcheader.Rpc{
+	rpc := wrapped.Rpc{
 		Id: cs.id,
-		Header: &rpcheader.RequestHeader{
+		Header: &wrapped.RequestHeader{
 			Method: cs.method,
 		},
-		Body: &rpcheader.Body{
+		Body: &wrapped.Body{
 			Data: body,
 		},
 	}
@@ -205,7 +206,7 @@ func (cs *clientStream) readLoop() error {
 	log.Printf("ClientStream %d started", cs.id)
 
 	var rErr error
-	var trailer *rpcheader.Trailer
+	var trailer *wrapped.Trailer
 
 	defer func() {
 		cs.mu.Lock()
@@ -290,7 +291,7 @@ func toStatusError(err error) error {
 
 // errorIfDone returns a grpc/status compatible error if the given RPC is the
 // last RPC in the stream.
-func errorIfDone(rpc *rpcheader.Rpc) (bool, error) {
+func errorIfDone(rpc *wrapped.Rpc) (bool, error) {
 	if rpc.Trailer == nil {
 		return false, nil
 	}

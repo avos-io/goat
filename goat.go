@@ -8,31 +8,31 @@ import (
 	"google.golang.org/grpc/encoding/proto"
 	"nhooyr.io/websocket"
 
-	rpcproto "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen"
 )
 
 type RpcReadWriter interface {
-	Read(context.Context) (*rpcproto.Rpc, error)
-	Write(context.Context, *rpcproto.Rpc) error
+	Read(context.Context) (*wrapped.Rpc, error)
+	Write(context.Context, *wrapped.Rpc) error
 }
 
 func NewFnReadWriter(
-	r func(context.Context) (*rpcproto.Rpc, error),
-	w func(context.Context, *rpcproto.Rpc) error,
+	r func(context.Context) (*wrapped.Rpc, error),
+	w func(context.Context, *wrapped.Rpc) error,
 ) RpcReadWriter {
 	return &fnReadWriter{r, w}
 }
 
 type fnReadWriter struct {
-	r func(context.Context) (*rpcproto.Rpc, error)
-	w func(context.Context, *rpcproto.Rpc) error
+	r func(context.Context) (*wrapped.Rpc, error)
+	w func(context.Context, *wrapped.Rpc) error
 }
 
-func (frw *fnReadWriter) Read(ctx context.Context) (*rpcproto.Rpc, error) {
+func (frw *fnReadWriter) Read(ctx context.Context) (*wrapped.Rpc, error) {
 	return frw.r(ctx)
 }
 
-func (frw *fnReadWriter) Write(ctx context.Context, rpc *rpcproto.Rpc) error {
+func (frw *fnReadWriter) Write(ctx context.Context, rpc *wrapped.Rpc) error {
 	return frw.w(ctx, rpc)
 }
 
@@ -49,7 +49,7 @@ func NewWebsocketRpcReadWriter(conn *websocket.Conn) RpcReadWriter {
 	}
 }
 
-func (wrw *WebsocketRpcReadWriter) Read(ctx context.Context) (*rpcproto.Rpc, error) {
+func (wrw *WebsocketRpcReadWriter) Read(ctx context.Context) (*wrapped.Rpc, error) {
 	msgType, data, err := wrw.conn.Read(ctx)
 
 	if err != nil {
@@ -60,7 +60,7 @@ func (wrw *WebsocketRpcReadWriter) Read(ctx context.Context) (*rpcproto.Rpc, err
 		return nil, fmt.Errorf("WebsocketRpcReadWriter: invalid recv type %d", msgType)
 	}
 
-	var rpc rpcproto.Rpc
+	var rpc wrapped.Rpc
 	err = wrw.codec.Unmarshal(data, &rpc)
 	if err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func (wrw *WebsocketRpcReadWriter) Read(ctx context.Context) (*rpcproto.Rpc, err
 	return &rpc, nil
 }
 
-func (wrw *WebsocketRpcReadWriter) Write(ctx context.Context, rpc *rpcproto.Rpc) error {
+func (wrw *WebsocketRpcReadWriter) Write(ctx context.Context, rpc *wrapped.Rpc) error {
 	bytes, err := wrw.codec.Marshal(rpc)
 	if err != nil {
 		return err

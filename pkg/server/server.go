@@ -10,15 +10,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/avos-io/goat"
-	rpcheader "github.com/avos-io/goat/gen"
-	"github.com/avos-io/goat/internal"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/avos-io/goat"
+	wrapped "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/internal"
 )
 
 // ServerOption is an option used when constructing a NewServer.
@@ -135,7 +136,7 @@ type handler struct {
 	codec encoding.Codec
 
 	mu      sync.Mutex // protects streams
-	streams map[uint64]chan *rpcheader.Rpc
+	streams map[uint64]chan *wrapped.Rpc
 }
 
 func newHandler(ctx context.Context, srv *Server, rw goat.RpcReadWriter) *handler {
@@ -144,7 +145,7 @@ func newHandler(ctx context.Context, srv *Server, rw goat.RpcReadWriter) *handle
 		srv:     srv,
 		rw:      rw,
 		codec:   encoding.GetCodec(proto.Name),
-		streams: map[uint64]chan *rpcheader.Rpc{},
+		streams: map[uint64]chan *wrapped.Rpc{},
 	}
 }
 
@@ -188,8 +189,8 @@ func (h *handler) serve() error {
 func (h *handler) processUnaryRpc(
 	info *serviceInfo,
 	md *grpc.MethodDesc,
-	rpc *rpcheader.Rpc,
-) *rpcheader.Rpc {
+	rpc *wrapped.Rpc,
+) *wrapped.Rpc {
 	ctx := context.Background()
 
 	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
@@ -218,41 +219,41 @@ func (h *handler) processUnaryRpc(
 	resp, appErr := md.Handler(info.serviceImpl, ctx, dec, h.srv.unaryInterceptor)
 
 	respH := internal.ToKeyValue(sts.GetHeaders())
-	respHeader := &rpcheader.RequestHeader{
+	respHeader := &wrapped.RequestHeader{
 		Method:  fullMethod,
 		Headers: respH,
 	}
-	respTrailer := &rpcheader.Trailer{
+	respTrailer := &wrapped.Trailer{
 		Metadata: internal.ToKeyValue(sts.GetTrailers()),
 	}
 
-	var respStatus *rpcheader.ResponseStatus
+	var respStatus *wrapped.ResponseStatus
 
 	if appErr != nil {
 		st, ok := status.FromError(appErr)
 		if !ok {
 			st = status.FromContextError(appErr)
 		}
-		respStatus = &rpcheader.ResponseStatus{
+		respStatus = &wrapped.ResponseStatus{
 			Code:    st.Proto().GetCode(),
 			Message: st.Proto().GetMessage(),
 			Details: st.Proto().GetDetails(),
 		}
 	}
 
-	var respBody *rpcheader.Body
+	var respBody *wrapped.Body
 
 	if resp != nil {
 		data, err := h.codec.Marshal(resp)
 
 		if err == nil {
-			respBody = &rpcheader.Body{
+			respBody = &wrapped.Body{
 				Data: data,
 			}
 		}
 	}
 
-	return &rpcheader.Rpc{
+	return &wrapped.Rpc{
 		Id:      rpc.GetId(),
 		Header:  respHeader,
 		Status:  respStatus,
@@ -264,7 +265,7 @@ func (h *handler) processUnaryRpc(
 func (h *handler) processStreamingRpc(
 	info *serviceInfo,
 	sd *grpc.StreamDesc,
-	rpc *rpcheader.Rpc,
+	rpc *wrapped.Rpc,
 ) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -275,7 +276,7 @@ func (h *handler) processStreamingRpc(
 	}
 
 	streamId := rpc.Id
-	ch := make(chan *rpcheader.Rpc, 1)
+	ch := make(chan *wrapped.Rpc, 1)
 	h.streams[streamId] = ch
 
 	go h.runStream(info, sd, rpc, streamId, ch)
@@ -285,15 +286,15 @@ func (h *handler) processStreamingRpc(
 func (h *handler) runStream(
 	info *serviceInfo,
 	sd *grpc.StreamDesc,
-	rpc *rpcheader.Rpc,
+	rpc *wrapped.Rpc,
 	streamId uint64,
-	rCh chan *rpcheader.Rpc,
+	rCh chan *wrapped.Rpc,
 ) error {
 	ctx := context.Background()
 
 	defer h.unregisterStream(streamId)
 
-	r := func(ctx context.Context) (*rpcheader.Rpc, error) {
+	r := func(ctx context.Context) (*wrapped.Rpc, error) {
 		select {
 		case msg, ok := <-rCh:
 			if !ok {
@@ -357,7 +358,7 @@ func (h *handler) unregisterStream(id uint64) {
 // is used to set the deadline on the returned context.
 func contextFromHeaders(
 	parent context.Context,
-	h *rpcheader.RequestHeader,
+	h *wrapped.RequestHeader,
 ) (context.Context, context.CancelFunc, error) {
 	cancel := func() {}
 	md, err := internal.ToMetadata(h.Headers)

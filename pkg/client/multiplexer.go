@@ -7,17 +7,18 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/avos-io/goat"
-	rpcheader "github.com/avos-io/goat/gen"
-	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/status"
+
+	"github.com/avos-io/goat"
+	wrapped "github.com/avos-io/goat/gen"
+	spb "google.golang.org/genproto/googleapis/rpc/status"
 )
 
 type RpcMultiplexer struct {
 	rw       goat.RpcReadWriter
-	handlers map[uint64]chan *rpcheader.Rpc
+	handlers map[uint64]chan *wrapped.Rpc
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -31,7 +32,7 @@ type RpcMultiplexer struct {
 func NewRpcMultiplexer(rw goat.RpcReadWriter) *RpcMultiplexer {
 	rm := &RpcMultiplexer{
 		rw:       rw,
-		handlers: make(map[uint64]chan *rpcheader.Rpc),
+		handlers: make(map[uint64]chan *wrapped.Rpc),
 		codec:    encoding.GetCodec(proto.Name),
 	}
 
@@ -47,17 +48,17 @@ func (rm *RpcMultiplexer) Close() {
 
 func (rm *RpcMultiplexer) CallUnaryMethod(
 	ctx context.Context,
-	header *rpcheader.RequestHeader,
-	body *rpcheader.Body,
-) (*rpcheader.Body, error) {
+	header *wrapped.RequestHeader,
+	body *wrapped.Body,
+) (*wrapped.Body, error) {
 	streamId := atomic.AddUint64(&rm.streamCounter, 1)
 
-	respChan := make(chan *rpcheader.Rpc, 1)
+	respChan := make(chan *wrapped.Rpc, 1)
 
 	rm.registerHandler(streamId, respChan)
 	defer rm.unregisterHandler(streamId)
 
-	rpc := rpcheader.Rpc{
+	rpc := wrapped.Rpc{
 		Id:     streamId,
 		Header: header,
 		Body:   body,
@@ -96,7 +97,7 @@ func (rm *RpcMultiplexer) NewStreamReadWriter(
 ) (uint64, goat.RpcReadWriter, func()) {
 	streamId := atomic.AddUint64(&rm.streamCounter, 1)
 
-	respChan := make(chan *rpcheader.Rpc, 1)
+	respChan := make(chan *wrapped.Rpc, 1)
 	rm.registerHandler(streamId, respChan)
 
 	teardown := func() {
@@ -104,7 +105,7 @@ func (rm *RpcMultiplexer) NewStreamReadWriter(
 	}
 
 	rw := goat.NewFnReadWriter(
-		func(ctx context.Context) (*rpcheader.Rpc, error) {
+		func(ctx context.Context) (*wrapped.Rpc, error) {
 			select {
 			case rpc, ok := <-respChan:
 				if !ok {
@@ -130,7 +131,7 @@ func (rm *RpcMultiplexer) readLoop() {
 	}
 }
 
-func (rm *RpcMultiplexer) handleResponse(rpc *rpcheader.Rpc) {
+func (rm *RpcMultiplexer) handleResponse(rpc *wrapped.Rpc) {
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
 
@@ -139,7 +140,7 @@ func (rm *RpcMultiplexer) handleResponse(rpc *rpcheader.Rpc) {
 	}
 }
 
-func (rm *RpcMultiplexer) registerHandler(id uint64, c chan *rpcheader.Rpc) {
+func (rm *RpcMultiplexer) registerHandler(id uint64, c chan *wrapped.Rpc) {
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
 

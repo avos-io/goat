@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
 
-	rpcheader "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/gen/mocks"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/internal"
@@ -45,23 +45,23 @@ func TestHeader(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		is := require.New(t)
 
-		sent := &rpcheader.RequestHeader{
+		sent := &wrapped.RequestHeader{
 			Method: "foo",
-			Headers: []*rpcheader.KeyValue{
+			Headers: []*wrapped.KeyValue{
 				{Key: "1", Value: "one"},
 				{Key: "2", Value: "two"},
 			},
 		}
 
 		rw := mocks.NewRpcReadWriter(t)
-		rw.EXPECT().Read(mock.Anything).Return(&rpcheader.Rpc{
+		rw.EXPECT().Read(mock.Anything).Return(&wrapped.Rpc{
 			Id:     1,
 			Header: sent,
 		}, nil).Once()
-		rw.EXPECT().Read(mock.Anything).Return(&rpcheader.Rpc{
+		rw.EXPECT().Read(mock.Anything).Return(&wrapped.Rpc{
 			Id:      1,
-			Header:  &rpcheader.RequestHeader{Method: "foo"},
-			Trailer: &rpcheader.Trailer{},
+			Header:  &wrapped.RequestHeader{Method: "foo"},
+			Trailer: &wrapped.Trailer{},
 		}, nil).Once()
 
 		stream := newClientStream(context.Background(), 1, "", rw, func() {})
@@ -92,8 +92,8 @@ func TestTrailer(t *testing.T) {
 	t.Run("Metadata", func(t *testing.T) {
 		is := require.New(t)
 
-		sent := &rpcheader.Trailer{
-			Metadata: []*rpcheader.KeyValue{
+		sent := &wrapped.Trailer{
+			Metadata: []*wrapped.KeyValue{
 				{Key: "0", Value: "jan"},
 				{Key: "1", Value: "feb"},
 				{Key: "2", Value: "mar"},
@@ -101,9 +101,9 @@ func TestTrailer(t *testing.T) {
 		}
 
 		rw := mocks.NewRpcReadWriter(t)
-		rw.EXPECT().Read(mock.Anything).Return(&rpcheader.Rpc{
+		rw.EXPECT().Read(mock.Anything).Return(&wrapped.Rpc{
 			Id:      9,
-			Header:  &rpcheader.RequestHeader{Method: "method"},
+			Header:  &wrapped.RequestHeader{Method: "method"},
 			Trailer: sent,
 		}, nil)
 
@@ -121,10 +121,10 @@ func TestTrailer(t *testing.T) {
 		is := require.New(t)
 
 		rw := mocks.NewRpcReadWriter(t)
-		rw.EXPECT().Read(mock.Anything).Return(&rpcheader.Rpc{
+		rw.EXPECT().Read(mock.Anything).Return(&wrapped.Rpc{
 			Id:      9001,
-			Header:  &rpcheader.RequestHeader{Method: "my_method"},
-			Trailer: &rpcheader.Trailer{},
+			Header:  &wrapped.RequestHeader{Method: "my_method"},
+			Trailer: &wrapped.Trailer{},
 		}, nil)
 
 		stream := newClientStream(context.Background(), 0, "", rw, func() {})
@@ -149,7 +149,7 @@ func TestCloseSend(t *testing.T) {
 		unblockRead := make(chan time.Time)
 		rw.EXPECT().Read(mock.Anything).WaitUntil(unblockRead).Return(nil, errTest).Maybe()
 		rw.EXPECT().Write(mock.Anything, mock.MatchedBy(
-			func(rpc *rpcheader.Rpc) bool {
+			func(rpc *wrapped.Rpc) bool {
 				return rpc.GetId() == id &&
 					rpc.GetHeader().GetMethod() == method &&
 					rpc.GetStatus().GetCode() == int32(codes.OK) &&
@@ -203,7 +203,7 @@ func TestSendMsg(t *testing.T) {
 		rw.EXPECT().Read(mock.Anything).WaitUntil(unblockRead).Return(nil, errTest).Maybe()
 
 		rw.EXPECT().Write(mock.Anything, mock.MatchedBy(
-			func(rpc *rpcheader.Rpc) bool {
+			func(rpc *wrapped.Rpc) bool {
 				return rpc.GetId() == id &&
 					rpc.GetHeader().GetMethod() == method &&
 					rpc.GetStatus().GetCode() == int32(codes.OK) &&
@@ -267,14 +267,14 @@ func TestSendMsg(t *testing.T) {
 
 		stream := newClientStream(context.Background(), id, method, rw, func() {})
 
-		recvErr := rpcheader.Rpc{
+		recvErr := wrapped.Rpc{
 			Id:     id,
-			Header: &rpcheader.RequestHeader{Method: method},
-			Status: &rpcheader.ResponseStatus{
+			Header: &wrapped.RequestHeader{Method: method},
+			Status: &wrapped.ResponseStatus{
 				Code:    int32(codes.Internal),
 				Message: codes.Internal.String(),
 			},
-			Trailer: &rpcheader.Trailer{},
+			Trailer: &wrapped.Trailer{},
 		}
 
 		readDone := make(chan struct{})
@@ -299,17 +299,17 @@ func TestRecvMsg(t *testing.T) {
 		msgBytes, err := encoding.GetCodec(proto.Name).Marshal(&msg)
 		is.NoError(err)
 
-		rpc := &rpcheader.Rpc{
+		rpc := &wrapped.Rpc{
 			Id: 42,
-			Header: &rpcheader.RequestHeader{
+			Header: &wrapped.RequestHeader{
 				Method: "method",
 			},
-			Body: &rpcheader.Body{
+			Body: &wrapped.Body{
 				Data: msgBytes,
 			},
 		}
-		tr := &rpcheader.Rpc{
-			Trailer: &rpcheader.Trailer{},
+		tr := &wrapped.Rpc{
+			Trailer: &wrapped.Trailer{},
 		}
 
 		rw.EXPECT().Read(mock.Anything).Return(rpc, nil).Once()
@@ -349,14 +349,14 @@ func TestRecvMsg(t *testing.T) {
 		rw := mocks.NewRpcReadWriter(t)
 		stream := newClientStream(context.Background(), 42, "method", rw, func() {})
 
-		recvErr := rpcheader.Rpc{
+		recvErr := wrapped.Rpc{
 			Id:     42,
-			Header: &rpcheader.RequestHeader{Method: "method"},
-			Status: &rpcheader.ResponseStatus{
+			Header: &wrapped.RequestHeader{Method: "method"},
+			Status: &wrapped.ResponseStatus{
 				Code:    int32(codes.Internal),
 				Message: codes.Internal.String(),
 			},
-			Trailer: &rpcheader.Trailer{},
+			Trailer: &wrapped.Trailer{},
 		}
 
 		readDone := make(chan struct{})

@@ -3,7 +3,7 @@ syntax = "proto3";
 import "google/protobuf/any.proto";
 
 package grpcwebsockets;
-option go_package = "./rpcheader";
+option go_package = "./wrapped";
 
 message Rpc {
     uint64 id = 1;

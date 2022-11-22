@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	rpcheader "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/gen/mocks"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/internal"
@@ -61,7 +61,7 @@ func TestHeaders(t *testing.T) {
 		})
 
 		rw.EXPECT().Write(ctx, mock.MatchedBy(
-			func(rpc *rpcheader.Rpc) bool {
+			func(rpc *wrapped.Rpc) bool {
 				return rpc.GetId() == streamId &&
 					rpc.GetHeader().GetMethod() == method &&
 					matchMetadata(t, val, rpc.GetHeader().GetHeaders())
@@ -108,7 +108,7 @@ func TestHeaders(t *testing.T) {
 		val3 := metadata.New(map[string]string{"3": "three"})
 
 		rw.EXPECT().Write(ctx, mock.MatchedBy(
-			func(rpc *rpcheader.Rpc) bool {
+			func(rpc *wrapped.Rpc) bool {
 				merged := val1
 				for _, m := range []metadata.MD{val2, val3} {
 					for k, v := range m {
@@ -146,7 +146,7 @@ func TestHeaders(t *testing.T) {
 		rw.AssertNotCalled(t, "Write")
 
 		rw.EXPECT().Write(ctx, mock.MatchedBy(
-			func(rpc *rpcheader.Rpc) bool {
+			func(rpc *wrapped.Rpc) bool {
 				return rpc.GetId() == streamId &&
 					rpc.GetHeader().GetMethod() == method &&
 					matchMetadata(t, val, rpc.GetHeader().GetHeaders())
@@ -164,7 +164,7 @@ func TestHeaders(t *testing.T) {
 		// Headers only sent with first message
 		rw.ExpectedCalls = nil
 		rw.EXPECT().Write(ctx, mock.MatchedBy(
-			func(rpc *rpcheader.Rpc) bool {
+			func(rpc *wrapped.Rpc) bool {
 				return rpc.GetId() == streamId &&
 					rpc.GetHeader().GetMethod() == method &&
 					len(rpc.GetHeader().GetHeaders()) == 0
@@ -189,7 +189,7 @@ func TestHeaders(t *testing.T) {
 		rw.AssertNotCalled(t, "Write")
 
 		rw.EXPECT().Write(ctx, mock.MatchedBy(
-			func(rpc *rpcheader.Rpc) bool {
+			func(rpc *wrapped.Rpc) bool {
 				return rpc.GetId() == streamId &&
 					rpc.GetHeader().GetMethod() == method &&
 					rpc.GetTrailer() != nil &&
@@ -221,7 +221,7 @@ func TestTrailers(t *testing.T) {
 		stream.SetTrailer(tr2)
 
 		rw.EXPECT().Write(ctx, mock.MatchedBy(
-			func(rpc *rpcheader.Rpc) bool {
+			func(rpc *wrapped.Rpc) bool {
 				merged := tr1
 				for k, v := range tr2 {
 					merged[k] = v
@@ -254,7 +254,7 @@ func TestTrailers(t *testing.T) {
 		stream.SetTrailer(tr)
 
 		rw.EXPECT().Write(ctx, mock.MatchedBy(
-			func(rpc *rpcheader.Rpc) bool {
+			func(rpc *wrapped.Rpc) bool {
 				return rpc.GetId() == streamId &&
 					rpc.GetHeader().GetMethod() == method &&
 					rpc.GetStatus().GetCode() != int32(codes.OK) &&
@@ -301,7 +301,7 @@ func TestSendMsg(t *testing.T) {
 		is.NoError(err)
 
 		rw.EXPECT().Write(ctx, mock.MatchedBy(
-			func(rpc *rpcheader.Rpc) bool {
+			func(rpc *wrapped.Rpc) bool {
 				return rpc.GetId() == streamId &&
 					rpc.GetHeader().GetMethod() == method &&
 					assert.Equal(t, mData, rpc.GetBody().GetData())
@@ -344,16 +344,16 @@ func TestRecvMsg(t *testing.T) {
 		data, err := codec.Marshal(&sent)
 		is.NoError(err)
 
-		rpc := rpcheader.Rpc{
+		rpc := wrapped.Rpc{
 			Id: streamId,
-			Header: &rpcheader.RequestHeader{
+			Header: &wrapped.RequestHeader{
 				Method: method,
 			},
-			Status: &rpcheader.ResponseStatus{
+			Status: &wrapped.ResponseStatus{
 				Code:    int32(codes.OK),
 				Message: codes.OK.String(),
 			},
-			Body: &rpcheader.Body{
+			Body: &wrapped.Body{
 				Data: data,
 			},
 		}
@@ -392,16 +392,16 @@ func TestRecvMsg(t *testing.T) {
 		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
-		rpc := rpcheader.Rpc{
+		rpc := wrapped.Rpc{
 			Id: streamId,
-			Header: &rpcheader.RequestHeader{
+			Header: &wrapped.RequestHeader{
 				Method: method,
 			},
-			Status: &rpcheader.ResponseStatus{
+			Status: &wrapped.ResponseStatus{
 				Code:    int32(codes.OK),
 				Message: codes.OK.String(),
 			},
-			Trailer: &rpcheader.Trailer{},
+			Trailer: &wrapped.Trailer{},
 		}
 
 		rw.EXPECT().Read(ctx).Return(&rpc, nil)
@@ -420,16 +420,16 @@ func TestRecvMsg(t *testing.T) {
 		stream, err := newServerStream(ctx, streamId, method, rw)
 		is.NoError(err)
 
-		rpc := rpcheader.Rpc{
+		rpc := wrapped.Rpc{
 			Id: streamId,
-			Header: &rpcheader.RequestHeader{
+			Header: &wrapped.RequestHeader{
 				Method: method,
 			},
-			Status: &rpcheader.ResponseStatus{
+			Status: &wrapped.ResponseStatus{
 				Code:    int32(codes.Internal),
 				Message: codes.Internal.String(),
 			},
-			Trailer: &rpcheader.Trailer{},
+			Trailer: &wrapped.Trailer{},
 		}
 
 		rw.EXPECT().Read(ctx).Return(&rpc, nil)
@@ -442,7 +442,7 @@ func TestRecvMsg(t *testing.T) {
 	})
 }
 
-func matchMetadata(t *testing.T, md metadata.MD, kvs []*rpcheader.KeyValue) bool {
+func matchMetadata(t *testing.T, md metadata.MD, kvs []*wrapped.KeyValue) bool {
 	v, err := internal.ToMetadata(kvs)
 	if err != nil {
 		return false

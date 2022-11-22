@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 
-	rpcheader "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/gen/testproto/mocks"
 	"github.com/avos-io/goat/internal/testutil"
@@ -156,9 +156,9 @@ func TestServerStream(t *testing.T) {
 
 		// Open stream
 		conn.ReadChan <- testutil.ReadReturn{
-			Rpc: &rpcheader.Rpc{
+			Rpc: &wrapped.Rpc{
 				Id: id,
-				Header: &rpcheader.RequestHeader{
+				Header: &wrapped.RequestHeader{
 					Method: method,
 				},
 			},
@@ -170,16 +170,16 @@ func TestServerStream(t *testing.T) {
 
 		// CloseSend
 		conn.ReadChan <- testutil.ReadReturn{
-			Rpc: &rpcheader.Rpc{
+			Rpc: &wrapped.Rpc{
 				Id: id,
-				Header: &rpcheader.RequestHeader{
+				Header: &wrapped.RequestHeader{
 					Method: method,
 				},
-				Status: &rpcheader.ResponseStatus{
+				Status: &wrapped.ResponseStatus{
 					Code:    int32(codes.OK),
 					Message: codes.OK.String(),
 				},
-				Trailer: &rpcheader.Trailer{},
+				Trailer: &wrapped.Trailer{},
 			},
 			Err: nil,
 		}
@@ -213,7 +213,7 @@ func waitTimeout(t *testing.T, on chan struct{}) {
 	}
 }
 
-func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg) *rpcheader.Rpc {
+func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg) *wrapped.Rpc {
 	codec := encoding.GetCodec(proto.Name)
 
 	body, err := codec.Marshal(msg)
@@ -221,17 +221,17 @@ func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg) *rpcheader.Rpc {
 		panic(err)
 	}
 
-	rpc := &rpcheader.Rpc{
+	rpc := &wrapped.Rpc{
 		Id: id,
-		Header: &rpcheader.RequestHeader{
+		Header: &wrapped.RequestHeader{
 			Method: fullMethod,
 		},
-		Body: &rpcheader.Body{Data: body},
+		Body: &wrapped.Body{Data: body},
 	}
 	return rpc
 }
 
-func unwrapBody(rpc *rpcheader.Rpc) *testproto.Msg {
+func unwrapBody(rpc *wrapped.Rpc) *testproto.Msg {
 	codec := encoding.GetCodec(proto.Name)
 
 	if rpc.GetBody() == nil {

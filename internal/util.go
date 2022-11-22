@@ -6,11 +6,11 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	rpcheader "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen"
 )
 
-func ToKeyValue(mds ...metadata.MD) []*rpcheader.KeyValue {
-	h := []*rpcheader.KeyValue{}
+func ToKeyValue(mds ...metadata.MD) []*wrapped.KeyValue {
+	h := []*wrapped.KeyValue{}
 	for k, vs := range metadata.Join(mds...) {
 		lowerK := strings.ToLower(k)
 		// binary headers must be base-64-encoded
@@ -19,13 +19,13 @@ func ToKeyValue(mds ...metadata.MD) []*rpcheader.KeyValue {
 			if isBin {
 				v = base64.URLEncoding.EncodeToString([]byte(v))
 			}
-			h = append(h, &rpcheader.KeyValue{Key: k, Value: v})
+			h = append(h, &wrapped.KeyValue{Key: k, Value: v})
 		}
 	}
 	return h
 }
 
-func ToMetadata(kvs []*rpcheader.KeyValue) (metadata.MD, error) {
+func ToMetadata(kvs []*wrapped.KeyValue) (metadata.MD, error) {
 	md := metadata.MD{}
 	for _, h := range kvs {
 		k := strings.ToLower(h.Key)

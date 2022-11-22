@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/status"
 
-	rpcheader "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/gen/mocks"
 	"github.com/avos-io/goat/gen/testproto"
 )
@@ -23,24 +23,24 @@ type testConn struct {
 }
 
 type readReturn struct {
-	rpc *rpcheader.Rpc
+	rpc *wrapped.Rpc
 	err error
 }
 
-func (c *testConn) Read(ctx context.Context) (*rpcheader.Rpc, error) {
+func (c *testConn) Read(ctx context.Context) (*wrapped.Rpc, error) {
 	args := c.Called(ctx)
 	ch := args.Get(0).(chan readReturn)
 	rr := <-ch
 	return rr.rpc, rr.err
 }
 
-func (c *testConn) Write(ctx context.Context, rpc *rpcheader.Rpc) error {
+func (c *testConn) Write(ctx context.Context, rpc *wrapped.Rpc) error {
 	args := c.Called(ctx, rpc)
 	err := args.Error(0)
 	return err
 }
 
-func makeResponse(id uint64, args interface{}) *rpcheader.Rpc {
+func makeResponse(id uint64, args interface{}) *wrapped.Rpc {
 	codec := encoding.GetCodec(proto.Name)
 
 	body, err := codec.Marshal(args)
@@ -48,14 +48,14 @@ func makeResponse(id uint64, args interface{}) *rpcheader.Rpc {
 		panic(err)
 	}
 
-	return &rpcheader.Rpc{
+	return &wrapped.Rpc{
 		Id:   id,
-		Body: &rpcheader.Body{Data: body},
+		Body: &wrapped.Body{Data: body},
 	}
 }
 
-func makeErrorResponse(id uint64, status *rpcheader.ResponseStatus) *rpcheader.Rpc {
-	return &rpcheader.Rpc{
+func makeErrorResponse(id uint64, status *wrapped.ResponseStatus) *wrapped.Rpc {
+	return &wrapped.Rpc{
 		Id:     id,
 		Status: status,
 	}
@@ -77,10 +77,10 @@ func TestUnaryMethodSuccess(t *testing.T) {
 
 	valBytes, err := rm.CallUnaryMethod(
 		context.Background(),
-		&rpcheader.RequestHeader{
+		&wrapped.RequestHeader{
 			Method: "sam",
 		},
-		&rpcheader.Body{})
+		&wrapped.Body{})
 
 	assert.NoError(t, err)
 
@@ -106,7 +106,7 @@ func TestUnaryMethodFailure(t *testing.T) {
 			readChan <- readReturn{
 				makeErrorResponse(
 					1,
-					&rpcheader.ResponseStatus{
+					&wrapped.ResponseStatus{
 						Code:    int32(codes.InvalidArgument),
 						Message: "Hello world"},
 				),
@@ -116,10 +116,10 @@ func TestUnaryMethodFailure(t *testing.T) {
 
 	valBytes, err := rm.CallUnaryMethod(
 		context.Background(),
-		&rpcheader.RequestHeader{
+		&wrapped.RequestHeader{
 			Method: "sam",
 		},
-		&rpcheader.Body{})
+		&wrapped.Body{})
 
 	assert.Nil(t, valBytes)
 	assert.Error(t, err)
@@ -144,12 +144,12 @@ func TestNewStreamReadWriter(t *testing.T) {
 		defer teardown()
 
 		ctx := context.Background()
-		rpc := &rpcheader.Rpc{
+		rpc := &wrapped.Rpc{
 			Id: id,
-			Header: &rpcheader.RequestHeader{
+			Header: &wrapped.RequestHeader{
 				Method: "method",
 			},
-			Body: &rpcheader.Body{
+			Body: &wrapped.Body{
 				Data: []byte{1, 2, 3, 4},
 			},
 		}
@@ -174,12 +174,12 @@ func TestNewStreamReadWriter(t *testing.T) {
 		id, srw, teardown := rm.NewStreamReadWriter(context.Background())
 		defer teardown()
 
-		rpc := &rpcheader.Rpc{
+		rpc := &wrapped.Rpc{
 			Id: id,
-			Header: &rpcheader.RequestHeader{
+			Header: &wrapped.RequestHeader{
 				Method: "method",
 			},
-			Body: &rpcheader.Body{
+			Body: &wrapped.Body{
 				Data: []byte{1, 2, 3, 4},
 			},
 		}
@@ -205,16 +205,16 @@ func TestNewStreamReadWriter(t *testing.T) {
 		id, srw, teardown := rm.NewStreamReadWriter(context.Background())
 		defer teardown()
 
-		readChan <- readReturn{&rpcheader.Rpc{Id: 9001}, nil}
-		readChan <- readReturn{&rpcheader.Rpc{Id: 9002}, nil}
-		readChan <- readReturn{&rpcheader.Rpc{Id: 9003}, nil}
+		readChan <- readReturn{&wrapped.Rpc{Id: 9001}, nil}
+		readChan <- readReturn{&wrapped.Rpc{Id: 9002}, nil}
+		readChan <- readReturn{&wrapped.Rpc{Id: 9003}, nil}
 
-		rpc := &rpcheader.Rpc{
+		rpc := &wrapped.Rpc{
 			Id: id,
-			Header: &rpcheader.RequestHeader{
+			Header: &wrapped.RequestHeader{
 				Method: "method",
 			},
-			Body: &rpcheader.Body{
+			Body: &wrapped.Body{
 				Data: []byte{1, 2, 3, 4},
 			},
 		}

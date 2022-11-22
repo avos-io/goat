@@ -9,15 +9,15 @@ import (
 
 	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
-
-	"github.com/avos-io/goat"
-	rpcheader "github.com/avos-io/goat/gen"
-	"github.com/avos-io/goat/internal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/avos-io/goat"
+	wrapped "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/internal"
 )
 
 type ServerStream interface {
@@ -88,9 +88,9 @@ func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
 		return nil
 	}
 
-	rpc := rpcheader.Rpc{
+	rpc := wrapped.Rpc{
 		Id: ss.id,
-		Header: &rpcheader.RequestHeader{
+		Header: &wrapped.RequestHeader{
 			Method:  ss.method,
 			Headers: internal.ToKeyValue(ss.headers...),
 		},
@@ -148,12 +148,12 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 		return err
 	}
 
-	rpc := rpcheader.Rpc{
+	rpc := wrapped.Rpc{
 		Id: ss.id,
-		Header: &rpcheader.RequestHeader{
+		Header: &wrapped.RequestHeader{
 			Method: ss.method,
 		},
-		Body: &rpcheader.Body{
+		Body: &wrapped.Body{
 			Data: body,
 		},
 	}
@@ -219,16 +219,16 @@ func (ss *serverStream) SendTrailer(trErr error) error {
 	}
 	ss.trailersSent = true
 
-	tr := rpcheader.Rpc{
+	tr := wrapped.Rpc{
 		Id: ss.id,
-		Header: &rpcheader.RequestHeader{
+		Header: &wrapped.RequestHeader{
 			Method: ss.method,
 		},
-		Status: &rpcheader.ResponseStatus{
+		Status: &wrapped.ResponseStatus{
 			Code:    int32(codes.OK),
 			Message: codes.OK.String(),
 		},
-		Trailer: &rpcheader.Trailer{
+		Trailer: &wrapped.Trailer{
 			Metadata: internal.ToKeyValue(ss.trailers...),
 		},
 	}
