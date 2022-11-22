@@ -377,8 +377,7 @@ func TestStreamTrailers(t *testing.T) {
 	err = stream.Send(&testproto.Msg{Value: int32(1)})
 	is.NoError(err)
 
-	_, err = stream.CloseAndRecv()
-	is.Equal(io.EOF, err)
+	stream.CloseAndRecv()
 
 	trailer := stream.Trailer()
 	is.NotNil(trailer)
