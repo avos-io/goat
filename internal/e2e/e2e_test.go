@@ -755,7 +755,6 @@ func setupOpts(
 		for {
 			select {
 			case <-ctx.Done():
-				clientConn.ReadChan <- testutil.ReadReturn{Rpc: nil, Err: io.EOF}
 				return
 			case w := <-serverConn.WriteChan:
 				clientConn.ReadChan <- testutil.ReadReturn{Rpc: w, Err: nil}
@@ -768,7 +767,6 @@ func setupOpts(
 		for {
 			select {
 			case <-ctx.Done():
-				serverConn.ReadChan <- testutil.ReadReturn{Rpc: nil, Err: io.EOF}
 				return
 			case w := <-clientConn.WriteChan:
 				serverConn.ReadChan <- testutil.ReadReturn{Rpc: w, Err: nil}
