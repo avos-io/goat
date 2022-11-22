@@ -3,13 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
-	"log"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
@@ -85,7 +85,7 @@ type Server struct {
 }
 
 func (s *Server) Stop() {
-	log.Printf("Server stop")
+	log.Info().Msg("Server stop")
 	s.cancel()
 }
 
@@ -95,12 +95,12 @@ func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 		ht := reflect.TypeOf(sd.HandlerType).Elem()
 		st := reflect.TypeOf(ss)
 		if !st.Implements(ht) {
-			log.Fatalf("RegisterService handler of type %v does not satisfy %v", st, ht)
+			log.Panic().Msgf("RegisterService handler of type %v does not satisfy %v", st, ht)
 		}
 	}
 
 	if _, ok := s.services[sd.ServiceName]; ok {
-		log.Fatalf("RegisterService duplicate service registration for %q", sd.ServiceName)
+		log.Panic().Msgf("RegisterService duplicate service registration for %q", sd.ServiceName)
 	}
 	info := &serviceInfo{
 		name:        sd.ServiceName,
@@ -153,7 +153,7 @@ func (h *handler) serve() error {
 	for {
 		rpc, err := h.rw.Read(h.ctx)
 		if err != nil {
-			log.Printf("read err: %v", err)
+			log.Error().Err(err).Msg("read err")
 			return err
 		}
 
@@ -164,13 +164,13 @@ func (h *handler) serve() error {
 		rawMethod := rpc.GetHeader().Method
 		service, method, err := parseRawMethod(rawMethod)
 		if err != nil {
-			log.Printf("failed to parse %s", rawMethod)
+			log.Error().Msgf("failed to parse %s", rawMethod)
 			return err
 		}
 
 		si, known := h.srv.services[service]
 		if !known {
-			log.Printf("unknown service, %s", service)
+			log.Error().Msgf("unknown service, %s", service)
 			continue
 		}
 		if md, ok := si.methods[method]; ok {
@@ -182,7 +182,7 @@ func (h *handler) serve() error {
 			h.processStreamingRpc(si, sd, rpc)
 			continue
 		}
-		log.Printf("unhandled method, %s %s", service, method)
+		log.Warn().Msgf("unhandled method, %s %s", service, method)
 	}
 }
 
@@ -195,7 +195,7 @@ func (h *handler) processUnaryRpc(
 
 	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
 	if err != nil {
-		log.Panicf("failed to processUnaryRpc: %v", err)
+		log.Panic().Err(err).Msg("failed to get context from headers")
 	}
 	defer cancel()
 
@@ -316,7 +316,7 @@ func (h *handler) runStream(
 
 	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
 	if err != nil {
-		log.Panicf("failed to create newStream: %v", err)
+		log.Panic().Err(err).Msg("failed to create newStream")
 	}
 	defer cancel()
 
@@ -343,7 +343,7 @@ func (h *handler) runStream(
 
 	err = stream.SendTrailer(appErr)
 	if err != nil {
-		log.Printf("runStream trailer err, %v", err)
+		log.Error().Err(err).Msg("runStream trailer err")
 		return err
 	}
 

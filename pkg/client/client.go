@@ -3,8 +3,9 @@ package client
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/avos-io/goat"
 	wrapped "github.com/avos-io/goat/gen"
@@ -61,7 +62,7 @@ func (cc *ClientConn) invoke(
 	opts ...grpc.CallOption,
 ) error {
 	if len(opts) > 0 {
-		log.Panic("opts unsupported")
+		log.Panic().Msg("opts unsupported")
 	}
 
 	headers := headersFromContext(ctx)
@@ -119,7 +120,7 @@ func (cc *ClientConn) newStream(
 	opts ...grpc.CallOption,
 ) (grpc.ClientStream, error) {
 	if len(opts) > 0 {
-		log.Panic("opts unsupported")
+		log.Panic().Msg("opts unsupported")
 	}
 
 	id, rw, teardown := cc.mp.NewStreamReadWriter(ctx)
@@ -133,7 +134,7 @@ func (cc *ClientConn) newStream(
 	}
 	err := rw.Write(ctx, &rpc)
 	if err != nil {
-		log.Printf("newStream: failed to open, %v", err)
+		log.Error().Err(err).Msg("newStream: failed to open")
 		return nil, err
 	}
 

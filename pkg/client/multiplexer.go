@@ -3,10 +3,10 @@ package client
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/status"
@@ -66,7 +66,7 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 
 	err := rm.rw.Write(ctx, &rpc)
 	if err != nil {
-		log.Printf("CallUnaryMethod: conn.Write %v", err)
+		log.Error().Err(err).Msg("CallUnaryMethod: conn.Write")
 		return nil, err
 	}
 

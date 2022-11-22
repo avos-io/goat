@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"sync"
 
+	"github.com/rs/zerolog/log"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -93,7 +93,7 @@ func (cs *clientStream) Trailer() metadata.MD {
 	}
 	md, err := internal.ToMetadata(cs.trailer.Metadata)
 	if err != nil {
-		log.Panicf("Trailer err: %v", err)
+		log.Panic().Err(err).Msg("Trailer err")
 	}
 	return md
 }
@@ -203,7 +203,7 @@ func (cs *clientStream) RecvMsg(m interface{}) error {
 // for reading. Errors are held internally and will be yielded on the next
 // RecvMsg or SendMsg call, as per the gRPC semantics.
 func (cs *clientStream) readLoop() error {
-	log.Printf("ClientStream %d started", cs.id)
+	log.Info().Uint64("id", cs.id).Msg("ClientStream started")
 
 	var rErr error
 	var trailer *wrapped.Trailer
@@ -218,7 +218,8 @@ func (cs *clientStream) readLoop() error {
 		cs.done = true
 		cs.rErr = rErr
 		cs.trailer = trailer
-		log.Printf("ClientStream %d done: err=%v", cs.id, rErr)
+
+		log.Info().Uint64("id", cs.id).Msg("ClientStream done")
 	}()
 
 	onReady := func(err error, headers metadata.MD) {

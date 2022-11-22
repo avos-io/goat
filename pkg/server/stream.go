@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"sync"
 
+	"github.com/rs/zerolog/log"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -98,7 +98,7 @@ func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
 
 	err := ss.rw.Write(ss.ctx, &rpc)
 	if err != nil {
-		log.Printf("ServerStream setHeader: conn.Write %v", err)
+		log.Error().Err(err).Msg("ServerStream setHeader: conn.Write")
 		return err
 	}
 
@@ -113,7 +113,7 @@ func (ss *serverStream) SetTrailer(md metadata.MD) {
 	defer ss.mu.Unlock()
 
 	if ss.trailersSent {
-		log.Printf("SetTrailer: trailers already sent!")
+		log.Error().Msg("SetTrailer: trailers already sent!")
 		return // I want to scream but I have no mouth
 	}
 
@@ -165,7 +165,7 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 
 	err = ss.rw.Write(ss.ctx, &rpc)
 	if err != nil {
-		log.Printf("ServerStream SendMsg: conn.Write %v", err)
+		log.Error().Err(err).Msg("ServerStream SendMsg: conn.Write")
 		return err
 	}
 
@@ -254,7 +254,7 @@ func (ss *serverStream) SendTrailer(trErr error) error {
 
 	err := ss.rw.Write(ss.ctx, &tr)
 	if err != nil {
-		log.Printf("ServerStream SendTrailer: conn.Write %v", err)
+		log.Error().Err(err).Msg("ServerStream SendTrailer: conn.Write")
 		return err
 	}
 	return nil
