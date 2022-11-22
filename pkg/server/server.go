@@ -294,6 +294,13 @@ func (h *handler) runStream(
 
 	defer h.unregisterStream(streamId)
 
+	if rpc.GetTrailer() != nil {
+		// The client may send a trailer to end a stream after we've already ended
+		// it, in which case we don't want to lazily create a new stream here.
+		log.Printf("ignoring client EOF for torn-down stream %d", streamId)
+		return nil
+	}
+
 	r := func(ctx context.Context) (*wrapped.Rpc, error) {
 		select {
 		case msg, ok := <-rCh:
