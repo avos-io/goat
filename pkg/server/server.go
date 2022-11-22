@@ -334,13 +334,14 @@ func (h *handler) runStream(
 	sts := NewServerTransportStream(si.FullMethod, stream)
 	stream.SetContext(grpc.NewContextWithServerTransportStream(ctx, sts))
 
+	var appErr error
 	if h.srv.streamInterceptor != nil {
-		err = h.srv.streamInterceptor(info.serviceImpl, stream, si, sd.Handler)
+		appErr = h.srv.streamInterceptor(info.serviceImpl, stream, si, sd.Handler)
 	} else {
-		err = sd.Handler(info.serviceImpl, stream)
+		appErr = sd.Handler(info.serviceImpl, stream)
 	}
 
-	err = stream.SendTrailer(err)
+	err = stream.SendTrailer(appErr)
 	if err != nil {
 		log.Printf("runStream trailer err, %v", err)
 		return err

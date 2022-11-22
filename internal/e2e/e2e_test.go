@@ -109,12 +109,19 @@ func TestServerStream(t *testing.T) {
 		defer teardown()
 
 		stream, err := client.ServerStream(ctx, &testproto.Msg{Value: 42})
-		is.NoError(err)
-		is.NotNil(stream)
 
-		recv, err := stream.Recv()
-		is.Error(err)
-		is.Nil(recv)
+		// Setting up the server stream is a multi-part process (open, send initial
+		// message, send trailer) and depending on when we receive the server error,
+		// we'll either get an error on client.ServerStream or an error on first
+		// stream.Recv()
+		if err != nil {
+			is.Nil(stream)
+		} else {
+			is.NotNil(stream)
+			recv, err := stream.Recv()
+			is.Error(err)
+			is.Nil(recv)
+		}
 	})
 }
 
@@ -169,9 +176,6 @@ func TestClientStream(t *testing.T) {
 		stream, err := client.ClientStream(ctx)
 		is.NoError(err)
 		is.NotNil(stream)
-
-		err = stream.Send(&testproto.Msg{Value: int32(1)})
-		is.NoError(err)
 
 		msg, err := stream.CloseAndRecv()
 		is.Error(err)
