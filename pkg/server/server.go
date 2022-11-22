@@ -312,7 +312,7 @@ func (h *handler) runStream(
 			return nil, ctx.Err()
 		}
 	}
-	rw := goat.NewFnReadWriter(r, h.rw.Write)
+	rw := internal.NewFnReadWriter(r, h.rw.Write)
 
 	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
 	if err != nil {
@@ -388,6 +388,9 @@ func contextFromHeaders(
 
 // See https://grpc.io/docs/guides/wire.html#requests
 func parseGrpcTimeout(timeout string) (time.Duration, bool) {
+	if timeout == "" {
+		return 0, false
+	}
 	suffix := timeout[len(timeout)-1]
 
 	val, err := strconv.ParseInt(timeout[:len(timeout)-1], 10, 64)

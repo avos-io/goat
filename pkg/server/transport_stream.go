@@ -28,11 +28,10 @@ func NewUnaryServerTransportStream(name string) UnaryServerTransportStream {
 type unaryServerTransportStream struct {
 	FullMethod string
 
-	mutex        sync.Mutex
-	headers      metadata.MD
-	headersSent  bool
-	trailers     metadata.MD
-	trailersSent bool
+	mutex       sync.Mutex
+	headers     metadata.MD
+	headersSent bool
+	trailers    metadata.MD
 }
 
 // Method returns the full method (serviceName + method) of the call.
@@ -69,9 +68,7 @@ func (sts *unaryServerTransportStream) setHeaderLocked(md metadata.MD) error {
 	if sts.headers == nil {
 		sts.headers = metadata.MD{}
 	}
-	for k, v := range md {
-		sts.headers[k] = append(sts.headers[k], v...)
-	}
+	sts.headers = metadata.Join(sts.headers, md)
 	return nil
 }
 
@@ -89,15 +86,11 @@ func (sts *unaryServerTransportStream) GetHeaders() metadata.MD {
 func (sts *unaryServerTransportStream) SetTrailer(md metadata.MD) error {
 	sts.mutex.Lock()
 	defer sts.mutex.Unlock()
-	if sts.trailersSent {
-		return fmt.Errorf("trailers already sent")
-	}
+
 	if sts.trailers == nil {
 		sts.trailers = metadata.MD{}
 	}
-	for k, v := range md {
-		sts.trailers[k] = append(sts.trailers[k], v...)
-	}
+	sts.trailers = metadata.Join(sts.trailers, md)
 	return nil
 }
 

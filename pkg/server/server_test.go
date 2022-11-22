@@ -204,6 +204,65 @@ func TestServerStream(t *testing.T) {
 	})
 }
 
+func TestParseGrpcTimeout(t *testing.T) {
+	is := require.New(t)
+
+	parse := func(timeout string) time.Duration {
+		dur, ok := parseGrpcTimeout(timeout)
+		is.True(ok)
+		return dur
+	}
+
+	is.Equal(time.Duration(4)*time.Hour, parse("4H"))
+	is.Equal(time.Duration(4)*time.Minute, parse("4M"))
+	is.Equal(time.Duration(4)*time.Second, parse("4S"))
+	is.Equal(time.Duration(4)*time.Millisecond, parse("4m"))
+	is.Equal(time.Duration(4)*time.Microsecond, parse("4u"))
+	is.Equal(time.Duration(4)*time.Nanosecond, parse("4n"))
+
+	checkFail := func(timeout string) {
+		_, ok := parseGrpcTimeout(timeout)
+		is.False(ok)
+	}
+	checkFail("4X")
+	checkFail("")
+	checkFail("well this won't work")
+}
+
+func TestParseRawMethod(t *testing.T) {
+	is := require.New(t)
+
+	tests := []struct {
+		input   string
+		service string
+		method  string
+	}{
+		{"myservice.TestService/Unary", "myservice.TestService", "Unary"},
+		{"/myservice.TestService/Unary", "myservice.TestService", "Unary"},
+		{"myservice/Unary", "myservice", "Unary"},
+		{"/myservice/Unary", "myservice", "Unary"},
+		{"/a.b/c", "a.b", "c"},
+	}
+
+	for _, tt := range tests {
+		service, method, err := parseRawMethod(tt.input)
+		is.NoError(err, tt.input)
+		is.Equal(tt.service, service)
+		is.Equal(tt.method, method)
+	}
+
+	expectedFails := []string{
+		"",
+		"a",
+		"aaa",
+		"\n",
+	}
+	for _, tt := range expectedFails {
+		_, _, err := parseRawMethod(tt)
+		is.Error(err, tt)
+	}
+}
+
 func waitTimeout(t *testing.T, on chan struct{}) {
 	select {
 	case <-time.After(1 * time.Second):

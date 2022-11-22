@@ -1,5 +1,5 @@
-// package e2e contains end-to-end tests
-package e2e
+// package goat_test contains end-to-end tests
+package goat_test
 
 import (
 	"context"

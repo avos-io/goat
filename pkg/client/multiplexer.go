@@ -13,6 +13,7 @@ import (
 
 	"github.com/avos-io/goat"
 	wrapped "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/internal"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
 )
 
@@ -104,7 +105,7 @@ func (rm *RpcMultiplexer) NewStreamReadWriter(
 		rm.unregisterHandler(streamId)
 	}
 
-	rw := goat.NewFnReadWriter(
+	rw := internal.NewFnReadWriter(
 		func(ctx context.Context) (*wrapped.Rpc, error) {
 			select {
 			case rpc, ok := <-respChan:

@@ -1,11 +1,13 @@
 package internal
 
 import (
+	"context"
 	"encoding/base64"
 	"strings"
 
 	"google.golang.org/grpc/metadata"
 
+	"github.com/avos-io/goat"
 	wrapped "github.com/avos-io/goat/gen"
 )
 
@@ -40,4 +42,26 @@ func ToMetadata(kvs []*wrapped.KeyValue) (metadata.MD, error) {
 		md[k] = append(md[k], v)
 	}
 	return md, nil
+}
+
+// NewFnReadWriter is a convenience wrapper to turn read and write functions
+// into an RpcReadWriter.
+func NewFnReadWriter(
+	r func(context.Context) (*wrapped.Rpc, error),
+	w func(context.Context, *wrapped.Rpc) error,
+) goat.RpcReadWriter {
+	return &fnReadWriter{r, w}
+}
+
+type fnReadWriter struct {
+	r func(context.Context) (*wrapped.Rpc, error)
+	w func(context.Context, *wrapped.Rpc) error
+}
+
+func (frw *fnReadWriter) Read(ctx context.Context) (*wrapped.Rpc, error) {
+	return frw.r(ctx)
+}
+
+func (frw *fnReadWriter) Write(ctx context.Context, rpc *wrapped.Rpc) error {
+	return frw.w(ctx, rpc)
 }
