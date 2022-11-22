@@ -153,7 +153,7 @@ func (h *handler) serve() error {
 	for {
 		rpc, err := h.rw.Read(h.ctx)
 		if err != nil {
-			log.Error().Err(err).Msg("read err")
+			log.Error().Err(err).Msg("Server: read err")
 			return err
 		}
 
@@ -164,13 +164,13 @@ func (h *handler) serve() error {
 		rawMethod := rpc.GetHeader().Method
 		service, method, err := parseRawMethod(rawMethod)
 		if err != nil {
-			log.Error().Msgf("failed to parse %s", rawMethod)
+			log.Error().Msgf("Server: failed to parse %s", rawMethod)
 			return err
 		}
 
 		si, known := h.srv.services[service]
 		if !known {
-			log.Error().Msgf("unknown service, %s", service)
+			log.Error().Msgf("Server: unknown service, %s", service)
 			continue
 		}
 		if md, ok := si.methods[method]; ok {
@@ -182,7 +182,7 @@ func (h *handler) serve() error {
 			h.processStreamingRpc(si, sd, rpc)
 			continue
 		}
-		log.Warn().Msgf("unhandled method, %s %s", service, method)
+		log.Warn().Msgf("Server: unhandled method, %s %s", service, method)
 	}
 }
 
@@ -195,7 +195,7 @@ func (h *handler) processUnaryRpc(
 
 	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
 	if err != nil {
-		log.Panic().Err(err).Msg("failed to get context from headers")
+		log.Panic().Err(err).Msg("Server: failed to get context from headers")
 	}
 	defer cancel()
 
@@ -297,7 +297,7 @@ func (h *handler) runStream(
 	if rpc.GetTrailer() != nil {
 		// The client may send a trailer to end a stream after we've already ended
 		// it, in which case we don't want to lazily create a new stream here.
-		log.Printf("ignoring client EOF for torn-down stream %d", streamId)
+		log.Info().Msgf("ignoring client EOF for torn-down stream %d", streamId)
 		return nil
 	}
 
@@ -328,6 +328,7 @@ func (h *handler) runStream(
 
 	stream, err := newServerStream(ctx, streamId, si.FullMethod, rw)
 	if err != nil {
+		log.Error().Err(err).Msg("Server: newServerStream failed")
 		return err
 	}
 
@@ -343,7 +344,7 @@ func (h *handler) runStream(
 
 	err = stream.SendTrailer(appErr)
 	if err != nil {
-		log.Error().Err(err).Msg("runStream trailer err")
+		log.Error().Err(err).Msg("Server: SendTrailer")
 		return err
 	}
 

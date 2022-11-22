@@ -145,6 +145,7 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 
 	body, err := ss.codec.Marshal(m)
 	if err != nil {
+		log.Error().Err(err).Msg("SendMsg unmarshal")
 		return err
 	}
 
@@ -183,12 +184,14 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 func (ss *serverStream) RecvMsg(m interface{}) error {
 	rpc, err := ss.rw.Read(ss.ctx)
 	if err != nil {
+		log.Error().Err(err).Msg("RecvMsg Read")
 		return err
 	}
 
 	if rpc.GetTrailer() != nil {
 		st := rpc.GetStatus()
 		if st.GetCode() == int32(codes.OK) {
+			log.Info().Msg("RecvMsg: EOF")
 			return io.EOF
 		}
 		sp := spb.Status{
@@ -196,7 +199,9 @@ func (ss *serverStream) RecvMsg(m interface{}) error {
 			Message: st.GetMessage(),
 			Details: st.GetDetails(),
 		}
-		return status.FromProto(&sp).Err()
+		err := status.FromProto(&sp).Err()
+		log.Error().Err(err).Msg("RecvMsg")
+		return err
 	}
 
 	return ss.codec.Unmarshal(rpc.GetBody().GetData(), m)

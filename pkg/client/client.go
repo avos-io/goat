@@ -19,6 +19,8 @@ import (
 type ClientConn struct {
 	mp *RpcMultiplexer
 
+	codec encoding.Codec
+
 	unaryInterceptor        grpc.UnaryClientInterceptor
 	chainUnaryInterceptors  []grpc.UnaryClientInterceptor
 	streamInterceptor       grpc.StreamClientInterceptor
@@ -27,8 +29,10 @@ type ClientConn struct {
 
 func NewClientConn(conn goat.RpcReadWriter, opts ...DialOption) grpc.ClientConnInterface {
 	cc := ClientConn{
-		mp: NewRpcMultiplexer(conn),
+		mp:    NewRpcMultiplexer(conn),
+		codec: encoding.GetCodec(proto.Name),
 	}
+
 	for _, opt := range opts {
 		opt.apply(&cc)
 	}
@@ -67,9 +71,9 @@ func (cc *ClientConn) invoke(
 
 	headers := headersFromContext(ctx)
 
-	codec := encoding.GetCodec(proto.Name)
-	body, err := codec.Marshal(args)
+	body, err := cc.codec.Marshal(args)
 	if err != nil {
+		log.Error().Err(err).Msg("Invoke Marshal")
 		return err
 	}
 
@@ -84,10 +88,15 @@ func (cc *ClientConn) invoke(
 	)
 
 	if err != nil {
+		log.Error().Err(err).Msg("Invoke CallUnaryMethod")
 		return err
 	}
 
-	return codec.Unmarshal(replyBody.Data, reply)
+	err = cc.codec.Unmarshal(replyBody.Data, reply)
+	if err != nil {
+		log.Error().Err(err).Msg("Invoke Unmarshal")
+	}
+	return err
 }
 
 func (cc *ClientConn) asInvoker(
@@ -120,11 +129,12 @@ func (cc *ClientConn) newStream(
 	opts ...grpc.CallOption,
 ) (grpc.ClientStream, error) {
 	if len(opts) > 0 {
-		log.Panic().Msg("opts unsupported")
+		log.Panic().Msg("NewStream: opts unsupported")
 	}
 
 	id, rw, teardown := cc.mp.NewStreamReadWriter(ctx)
 
+	// open stream
 	rpc := wrapped.Rpc{
 		Id: id,
 		Header: &wrapped.RequestHeader{
@@ -134,7 +144,7 @@ func (cc *ClientConn) newStream(
 	}
 	err := rw.Write(ctx, &rpc)
 	if err != nil {
-		log.Error().Err(err).Msg("newStream: failed to open")
+		log.Error().Err(err).Msg("NewStream: failed to open")
 		return nil, err
 	}
 
@@ -151,10 +161,8 @@ func (cc *ClientConn) asStreamer(
 	return cc.newStream(ctx, desc, method, opts...)
 }
 
-// headersFromContext returns request headers to send to the remote host based
-// on the specified context. GRPC clients store outgoing metadata into the
-// context, which is translated into headers. Also, a context deadline will be
-// propagated to the server via GRPC timeout metadata.
+// headersFromContext transforms metadata from the given context into KeyValues
+// which can be used as part of the wrapped header.
 func headersFromContext(ctx context.Context) []*wrapped.KeyValue {
 	h := []*wrapped.KeyValue{}
 	if md, ok := metadata.FromOutgoingContext(ctx); ok {
