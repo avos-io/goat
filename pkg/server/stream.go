@@ -20,12 +20,6 @@ import (
 	"github.com/avos-io/goat/internal"
 )
 
-type ServerStream interface {
-	grpc.ServerStream
-	SetContext(context.Context)
-	SendTrailer(error) error
-}
-
 type serverStream struct {
 	ctx    context.Context
 	id     uint64
@@ -42,12 +36,14 @@ type serverStream struct {
 	trailersSent bool
 }
 
+var _ grpc.ServerStream = (*serverStream)(nil)
+
 func newServerStream(
 	ctx context.Context,
 	id uint64,
 	method string,
 	rw goat.RpcReadWriter,
-) (ServerStream, error) {
+) (*serverStream, error) {
 	return &serverStream{
 		ctx:    ctx,
 		id:     id,

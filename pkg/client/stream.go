@@ -20,6 +20,31 @@ import (
 	"github.com/avos-io/goat/internal"
 )
 
+type clientStream struct {
+	ctx context.Context
+
+	id     uint64
+	method string
+	codec  encoding.Codec
+
+	ready  sync.WaitGroup
+	header metadata.MD
+
+	rw goat.RpcReadWriter
+
+	mu        sync.Mutex // protects: done, headerErr, rErr, trailer
+	done      bool
+	headerErr error
+	rErr      error
+	trailer   *wrapped.Trailer
+
+	teardown func()
+
+	rCh chan *wrapped.Body
+}
+
+var _ grpc.ClientStream = (*clientStream)(nil)
+
 func newClientStream(
 	ctx context.Context,
 	id uint64,
@@ -49,29 +74,6 @@ func newClientStream(
 	go cs.readLoop()
 
 	return cs
-}
-
-type clientStream struct {
-	ctx context.Context
-
-	id     uint64
-	method string
-	codec  encoding.Codec
-
-	ready  sync.WaitGroup
-	header metadata.MD
-
-	rw goat.RpcReadWriter
-
-	mu        sync.Mutex // protects: done, headerErr, rErr, trailer
-	done      bool
-	headerErr error
-	rErr      error
-	trailer   *wrapped.Trailer
-
-	teardown func()
-
-	rCh chan *wrapped.Body
 }
 
 // Header returns the header metadata received from the server if there

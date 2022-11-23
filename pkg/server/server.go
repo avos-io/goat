@@ -200,7 +200,7 @@ func (h *handler) processUnaryRpc(
 	defer cancel()
 
 	fullMethod := fmt.Sprintf("%s/%s", info.name, md.MethodName)
-	sts := NewUnaryServerTransportStream(fullMethod)
+	sts := newUnaryServerTransportStream(fullMethod)
 	ctx = grpc.NewContextWithServerTransportStream(ctx, sts)
 
 	body := rpc.GetBody()
@@ -332,7 +332,7 @@ func (h *handler) runStream(
 		return err
 	}
 
-	sts := NewServerTransportStream(si.FullMethod, stream)
+	sts := newServerTransportStream(si.FullMethod, stream)
 	stream.SetContext(grpc.NewContextWithServerTransportStream(ctx, sts))
 
 	var appErr error

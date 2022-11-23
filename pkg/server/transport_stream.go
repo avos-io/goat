@@ -8,25 +8,15 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-// UnaryServerTransportStream is a minimal grpc.ServerTransportStream.
+// unaryServerTransportStream is a minimal grpc.ServerTransportStream.
 //
 // The functionality for setting headers and trailers in gRPC requires a stream
 // to be in context, so this stream collects headers and trailers on behalf of
 // a unary handler, allowing them to be later retrieved by the handler.
 //
 // See grpc.NewContextWithServerTransportStream.
-type UnaryServerTransportStream interface {
-	grpc.ServerTransportStream
-	GetHeaders() metadata.MD
-	GetTrailers() metadata.MD
-}
-
-func NewUnaryServerTransportStream(name string) UnaryServerTransportStream {
-	return &unaryServerTransportStream{FullMethod: name}
-}
-
 type unaryServerTransportStream struct {
-	FullMethod string
+	fullMethod string
 
 	mutex       sync.Mutex
 	headers     metadata.MD
@@ -34,9 +24,15 @@ type unaryServerTransportStream struct {
 	trailers    metadata.MD
 }
 
+var _ grpc.ServerTransportStream = (*unaryServerTransportStream)(nil)
+
+func newUnaryServerTransportStream(name string) *unaryServerTransportStream {
+	return &unaryServerTransportStream{fullMethod: name}
+}
+
 // Method returns the full method (serviceName + method) of the call.
 func (sts *unaryServerTransportStream) Method() string {
-	return sts.FullMethod
+	return sts.fullMethod
 }
 
 // SetHeader adds the given metadata to the set of response headers which will
@@ -104,36 +100,38 @@ func (sts *unaryServerTransportStream) GetTrailers() metadata.MD {
 }
 
 // serverTransportStream implements grpc.serverTransportStream, mostly by
-// wrapping a grpc.Server stream and delegating calls to it.
+// delegating calls to the wrapped grpc.ServerStream.
 type serverTransportStream struct {
-	FullMethod string
-	Stream     grpc.ServerStream
+	fullMethod string
+	stream     grpc.ServerStream
 }
 
-func NewServerTransportStream(
+var _ grpc.ServerTransportStream = (*serverTransportStream)(nil)
+
+func newServerTransportStream(
 	fullMethod string,
 	stream grpc.ServerStream,
-) grpc.ServerTransportStream {
-	return &serverTransportStream{FullMethod: fullMethod, Stream: stream}
+) *serverTransportStream {
+	return &serverTransportStream{fullMethod: fullMethod, stream: stream}
 }
 
 // Method returns the full method (serviceName + stream method) of the stream.
 func (sts *serverTransportStream) Method() string {
-	return sts.FullMethod
+	return sts.fullMethod
 }
 
 // SetHeader sets the header on the underlying stream.
 func (sts *serverTransportStream) SetHeader(md metadata.MD) error {
-	return sts.Stream.SetHeader(md)
+	return sts.stream.SetHeader(md)
 }
 
 // SendHeader sends the header on the underlying stream.
 func (sts *serverTransportStream) SendHeader(md metadata.MD) error {
-	return sts.Stream.SendHeader(md)
+	return sts.stream.SendHeader(md)
 }
 
 // SetTrailer sets the trailer on the underlying stream.
 func (sts *serverTransportStream) SetTrailer(md metadata.MD) error {
-	sts.Stream.SetTrailer(md)
+	sts.stream.SetTrailer(md)
 	return nil
 }
