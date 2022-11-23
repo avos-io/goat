@@ -55,6 +55,8 @@ func (cc *ClientConn) Invoke(
 	opts ...grpc.CallOption,
 ) error {
 	if cc.unaryInterceptor != nil {
+		// NOTE: grpc.ClientConn is a concrete type which leaks out of package grpc;
+		// since we're not that concrete type, we're forced to pass nil here.
 		return cc.unaryInterceptor(ctx, method, args, reply, nil, cc.asInvoker, opts...)
 	}
 	return cc.invoke(ctx, method, args, reply, opts...)
@@ -68,7 +70,7 @@ func (cc *ClientConn) invoke(
 	opts ...grpc.CallOption,
 ) error {
 	if len(opts) > 0 {
-		log.Panic().Msg("opts unsupported")
+		log.Panic().Msg("Invoke opts unsupported")
 	}
 
 	headers := headersFromContext(ctx)
@@ -119,6 +121,8 @@ func (cc *ClientConn) NewStream(
 	opts ...grpc.CallOption,
 ) (grpc.ClientStream, error) {
 	if cc.streamInterceptor != nil {
+		// NOTE: grpc.ClientConn is a concrete type which leaks out of package grpc;
+		// since we're not that concrete type, we're forced to pass nil here.
 		return cc.streamInterceptor(ctx, desc, nil, method, cc.asStreamer, opts...)
 	}
 	return cc.newStream(ctx, desc, method, opts...)
@@ -214,21 +218,21 @@ func chainedUnaryInterceptors(cc *ClientConn) grpc.UnaryClientInterceptor {
 				req,
 				reply,
 				cc,
-				getChainUnaryInvoker(interceptors, 0, invoker),
+				chainInvoker(interceptors, 0, invoker),
 				opts...,
 			)
 		}
 	}
 }
 
-// getChainUnaryInvoker recursively generates the chained unary invoker.
-func getChainUnaryInvoker(
+// chainInvoker recursively generates the chained unary invoker.
+func chainInvoker(
 	interceptors []grpc.UnaryClientInterceptor,
-	curr int,
-	finalInvoker grpc.UnaryInvoker,
+	currIdx int,
+	final grpc.UnaryInvoker,
 ) grpc.UnaryInvoker {
-	if curr == len(interceptors)-1 {
-		return finalInvoker
+	if currIdx == len(interceptors)-1 {
+		return final
 	}
 	return func(
 		ctx context.Context,
@@ -238,13 +242,13 @@ func getChainUnaryInvoker(
 		cc *grpc.ClientConn,
 		opts ...grpc.CallOption,
 	) error {
-		return interceptors[curr+1](
+		return interceptors[currIdx+1](
 			ctx,
 			method,
 			req,
 			reply,
 			cc,
-			getChainUnaryInvoker(interceptors, curr+1, finalInvoker),
+			chainInvoker(interceptors, currIdx+1, final),
 			opts...,
 		)
 	}
@@ -256,7 +260,8 @@ func chainedStreamInterceptors(cc *ClientConn) grpc.StreamClientInterceptor {
 	if cc.streamInterceptor != nil {
 		interceptors = append(
 			[]grpc.StreamClientInterceptor{cc.streamInterceptor},
-			interceptors...)
+			interceptors...,
+		)
 	}
 	switch len(interceptors) {
 	case 0:
@@ -277,20 +282,20 @@ func chainedStreamInterceptors(cc *ClientConn) grpc.StreamClientInterceptor {
 				desc,
 				cc,
 				method,
-				getChainStreamer(interceptors, 0, streamer),
+				chainStreamer(interceptors, 0, streamer),
 				opts...)
 		}
 	}
 }
 
-// getChainStreamer recursively generates the chained client stream constructor.
-func getChainStreamer(
+// chainStreamer recursively generates the chained client stream constructor.
+func chainStreamer(
 	interceptors []grpc.StreamClientInterceptor,
-	curr int,
-	finalStreamer grpc.Streamer,
+	currIdx int,
+	final grpc.Streamer,
 ) grpc.Streamer {
-	if curr == len(interceptors)-1 {
-		return finalStreamer
+	if currIdx == len(interceptors)-1 {
+		return final
 	}
 	return func(
 		ctx context.Context,
@@ -299,12 +304,12 @@ func getChainStreamer(
 		method string,
 		opts ...grpc.CallOption,
 	) (grpc.ClientStream, error) {
-		return interceptors[curr+1](
+		return interceptors[currIdx+1](
 			ctx,
 			desc,
 			cc,
 			method,
-			getChainStreamer(interceptors, curr+1, finalStreamer),
+			chainStreamer(interceptors, currIdx+1, final),
 			opts...,
 		)
 	}
