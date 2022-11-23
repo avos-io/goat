@@ -136,9 +136,12 @@ func (rm *RpcMultiplexer) handleResponse(rpc *wrapped.Rpc) {
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
 
-	if ch, ok := rm.handlers[rpc.Id]; ok {
-		ch <- rpc
+	ch, ok := rm.handlers[rpc.GetId()]
+	if !ok {
+		log.Error().Msgf("Mux: unhandled Rpc %d", rpc.GetId())
+		return
 	}
+	ch <- rpc
 }
 
 func (rm *RpcMultiplexer) registerHandler(id uint64, c chan *wrapped.Rpc) {

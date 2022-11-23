@@ -32,11 +32,15 @@ type clientStream struct {
 
 	rw goat.RpcReadWriter
 
-	mu        sync.Mutex // protects: done, headerErr, rErr, trailer
-	done      bool
-	headerErr error
-	rErr      error
-	trailer   *wrapped.Trailer
+	protected struct {
+		sync.Mutex
+
+		done      bool
+		headerErr error
+		eErr      error
+		rErr      error
+		trailer   *wrapped.Trailer
+	}
 
 	teardown func()
 
@@ -79,21 +83,26 @@ func newClientStream(
 // Header returns the header metadata received from the server if there
 // is any. It blocks if the metadata is not ready to read.
 func (cs *clientStream) Header() (metadata.MD, error) {
+	// unblocked once we receive our first headers
 	cs.ready.Wait()
-	return cs.header, cs.headerErr
+
+	cs.protected.Lock()
+	defer cs.protected.Unlock()
+
+	return cs.header, cs.protected.headerErr
 }
 
 // Trailer returns the trailer metadata from the server, if there is any.
 // It must only be called after stream.CloseAndRecv has returned, or
 // stream.Recv has returned a non-nil error (including io.EOF).
 func (cs *clientStream) Trailer() metadata.MD {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+	cs.protected.Lock()
+	defer cs.protected.Unlock()
 
-	if cs.trailer.GetMetadata() == nil {
+	if cs.protected.trailer.GetMetadata() == nil {
 		return nil
 	}
-	md, err := internal.ToMetadata(cs.trailer.Metadata)
+	md, err := internal.ToMetadata(cs.protected.trailer.Metadata)
 	if err != nil {
 		log.Panic().Err(err).Msg("Trailer err")
 	}
@@ -211,25 +220,25 @@ func (cs *clientStream) readLoop() error {
 	var trailer *wrapped.Trailer
 
 	defer func() {
-		cs.mu.Lock()
-		defer cs.mu.Unlock()
+		cs.protected.Lock()
+		defer cs.protected.Unlock()
 
 		close(cs.rCh)
 		cs.teardown()
 
-		cs.done = true
-		cs.rErr = rErr
-		cs.trailer = trailer
+		cs.protected.done = true
+		cs.protected.rErr = rErr
+		cs.protected.trailer = trailer
 
 		log.Info().Uint64("id", cs.id).Msg("ClientStream done")
 	}()
 
 	onReady := func(err error, headers metadata.MD) {
-		cs.mu.Lock()
-		defer cs.mu.Unlock()
+		cs.protected.Lock()
+		defer cs.protected.Unlock()
 
 		if cs.header == nil {
-			cs.headerErr = err
+			cs.protected.headerErr = err
 			cs.header = headers
 			cs.ready.Done()
 		}
@@ -272,14 +281,14 @@ func (cs *clientStream) readLoop() error {
 }
 
 func (cs *clientStream) readErrorIfDone() (bool, error) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+	cs.protected.Lock()
+	defer cs.protected.Unlock()
 
-	if !cs.done {
+	if !cs.protected.done {
 		return false, nil
 	}
 
-	return true, cs.rErr
+	return true, cs.protected.rErr
 }
 
 // toStatusError converts an error to one compatible with the grpc.status pkg.

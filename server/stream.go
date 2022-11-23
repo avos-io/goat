@@ -29,11 +29,14 @@ type serverStream struct {
 
 	rw goat.RpcReadWriter
 
-	mu           sync.Mutex // protects headers, headersSent, trailers, trailersSent
-	headers      []metadata.MD
-	headersSent  bool
-	trailers     []metadata.MD
-	trailersSent bool
+	protected struct {
+		sync.Mutex
+
+		headers      []metadata.MD
+		headersSent  bool
+		trailers     []metadata.MD
+		trailersSent bool
+	}
 }
 
 var _ grpc.ServerStream = (*serverStream)(nil)
@@ -71,14 +74,14 @@ func (ss *serverStream) SendHeader(md metadata.MD) error {
 }
 
 func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
+	ss.protected.Lock()
+	defer ss.protected.Unlock()
 
-	if ss.headersSent {
+	if ss.protected.headersSent {
 		return fmt.Errorf("headers already sent")
 	}
 
-	ss.headers = append(ss.headers, md)
+	ss.protected.headers = append(ss.protected.headers, md)
 
 	if !send {
 		return nil
@@ -88,7 +91,7 @@ func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
 		Id: ss.id,
 		Header: &wrapped.RequestHeader{
 			Method:  ss.method,
-			Headers: internal.ToKeyValue(ss.headers...),
+			Headers: internal.ToKeyValue(ss.protected.headers...),
 		},
 	}
 
@@ -98,22 +101,22 @@ func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
 		return err
 	}
 
-	ss.headersSent = true
+	ss.protected.headersSent = true
 	return nil
 }
 
 // SetTrailer sets the trailer metadata which will be sent with the RPC status.
 // When called more than once, all the provided metadata will be merged.
 func (ss *serverStream) SetTrailer(md metadata.MD) {
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
+	ss.protected.Lock()
+	defer ss.protected.Unlock()
 
-	if ss.trailersSent {
+	if ss.protected.trailersSent {
 		log.Error().Msg("SetTrailer: trailers already sent!")
 		return // I want to scream but I have no mouth
 	}
 
-	ss.trailers = append(ss.trailers, md)
+	ss.protected.trailers = append(ss.protected.trailers, md)
 }
 
 // Context returns the context for this stream.
@@ -136,8 +139,8 @@ func (ss *serverStream) Context() context.Context {
 // calling RecvMsg on the same stream at the same time, but it is not safe
 // to call SendMsg on the same stream in different goroutines.
 func (ss *serverStream) SendMsg(m interface{}) error {
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
+	ss.protected.Lock()
+	defer ss.protected.Unlock()
 
 	body, err := ss.codec.Marshal(m)
 	if err != nil {
@@ -155,9 +158,9 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 		},
 	}
 
-	if !ss.headersSent {
-		rpc.Header.Headers = internal.ToKeyValue(ss.headers...)
-		ss.headersSent = true
+	if !ss.protected.headersSent {
+		rpc.Header.Headers = internal.ToKeyValue(ss.protected.headers...)
+		ss.protected.headersSent = true
 	}
 
 	err = ss.rw.Write(ss.ctx, &rpc)
@@ -212,13 +215,13 @@ func (ss *serverStream) SetContext(ctx context.Context) {
 // SendTrailer sends the trailer for the stream, setting the Status to match the
 // given error. On completion, the stream is considered closed for writing.
 func (ss *serverStream) SendTrailer(trErr error) error {
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
+	ss.protected.Lock()
+	defer ss.protected.Unlock()
 
-	if ss.trailersSent {
+	if ss.protected.trailersSent {
 		return fmt.Errorf("stream closed for writing (wrote trailers)")
 	}
-	ss.trailersSent = true
+	ss.protected.trailersSent = true
 
 	tr := wrapped.Rpc{
 		Id: ss.id,
@@ -230,13 +233,13 @@ func (ss *serverStream) SendTrailer(trErr error) error {
 			Message: codes.OK.String(),
 		},
 		Trailer: &wrapped.Trailer{
-			Metadata: internal.ToKeyValue(ss.trailers...),
+			Metadata: internal.ToKeyValue(ss.protected.trailers...),
 		},
 	}
 
-	if !ss.headersSent {
-		tr.Header.Headers = internal.ToKeyValue(ss.headers...)
-		ss.headersSent = true
+	if !ss.protected.headersSent {
+		tr.Header.Headers = internal.ToKeyValue(ss.protected.headers...)
+		ss.protected.headersSent = true
 	}
 
 	if trErr != nil {

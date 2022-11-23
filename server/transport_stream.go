@@ -18,7 +18,7 @@ import (
 type unaryServerTransportStream struct {
 	fullMethod string
 
-	mutex       sync.Mutex
+	mu          sync.Mutex
 	headers     metadata.MD
 	headersSent bool
 	trailers    metadata.MD
@@ -38,8 +38,8 @@ func (sts *unaryServerTransportStream) Method() string {
 // SetHeader adds the given metadata to the set of response headers which will
 // be sent to the client.
 func (sts *unaryServerTransportStream) SetHeader(md metadata.MD) error {
-	sts.mutex.Lock()
-	defer sts.mutex.Unlock()
+	sts.mu.Lock()
+	defer sts.mu.Unlock()
 	return sts.setHeaderLocked(md)
 }
 
@@ -48,8 +48,8 @@ func (sts *unaryServerTransportStream) SetHeader(md metadata.MD) error {
 // the headers as sent, such that any further calls to SetHeader or SendHeader
 // will fail.
 func (sts *unaryServerTransportStream) SendHeader(md metadata.MD) error {
-	sts.mutex.Lock()
-	defer sts.mutex.Unlock()
+	sts.mu.Lock()
+	defer sts.mu.Unlock()
 	if err := sts.setHeaderLocked(md); err != nil {
 		return err
 	}
@@ -72,16 +72,16 @@ func (sts *unaryServerTransportStream) setHeaderLocked(md metadata.MD) error {
 // and SendHeader. This is used by a server to gather the headers that must
 // actually be sent to a client.
 func (sts *unaryServerTransportStream) GetHeaders() metadata.MD {
-	sts.mutex.Lock()
-	defer sts.mutex.Unlock()
+	sts.mu.Lock()
+	defer sts.mu.Unlock()
 	return sts.headers
 }
 
 // SetTrailer satisfies the grpc.ServerTransportStream, adding the given
 // metadata to the set of response trailers that will be sent to the client.
 func (sts *unaryServerTransportStream) SetTrailer(md metadata.MD) error {
-	sts.mutex.Lock()
-	defer sts.mutex.Unlock()
+	sts.mu.Lock()
+	defer sts.mu.Unlock()
 
 	if sts.trailers == nil {
 		sts.trailers = metadata.MD{}
@@ -94,8 +94,8 @@ func (sts *unaryServerTransportStream) SetTrailer(md metadata.MD) error {
 // SetTrailer. This is used by a server to gather the headers that must actually
 // be sent to a client.
 func (sts *unaryServerTransportStream) GetTrailers() metadata.MD {
-	sts.mutex.Lock()
-	defer sts.mutex.Unlock()
+	sts.mu.Lock()
+	defer sts.mu.Unlock()
 	return sts.trailers
 }
 
