@@ -27,7 +27,9 @@ type ClientConn struct {
 	chainStreamInterceptors []grpc.StreamClientInterceptor
 }
 
-func NewClientConn(conn goat.RpcReadWriter, opts ...DialOption) grpc.ClientConnInterface {
+var _ grpc.ClientConnInterface = (*ClientConn)(nil)
+
+func NewClientConn(conn goat.RpcReadWriter, opts ...DialOption) *ClientConn {
 	cc := ClientConn{
 		mp:    NewRpcMultiplexer(conn),
 		codec: encoding.GetCodec(proto.Name),
