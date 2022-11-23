@@ -14,11 +14,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/avos-io/goat/client"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/gen/testproto/mocks"
 	"github.com/avos-io/goat/internal/testutil"
-	"github.com/avos-io/goat/pkg/client"
-	"github.com/avos-io/goat/pkg/server"
+	"github.com/avos-io/goat/server"
 )
 
 var errTest = errors.New("TEST ERROR (EXPECTED)")
