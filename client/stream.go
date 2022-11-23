@@ -275,7 +275,7 @@ func (cs *clientStream) readLoop() error {
 			rErr = toStatusError(cs.ctx.Err())
 			return rErr
 		case cs.rCh <- rpc.Body:
-			//
+			// ok
 		}
 	}
 }
