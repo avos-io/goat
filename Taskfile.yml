@@ -17,8 +17,10 @@ tasks:
     deps: [gen-mocks]
     desc: |
       Test all targets.
+    vars:
+      FLAGS: '{{default "-cover -timeout 30s" .FLAGS}}'
     cmds:
-      - go test -cover ./...
+      - go test {{.FLAGS}} ./...
 
   clean:
     desc: |
