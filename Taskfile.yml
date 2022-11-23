@@ -49,7 +49,6 @@ tasks:
   gen-mocks:
     deps: [gen-proto]
     cmds:
-      - mockery --with-expecter --dir pkg/ --output ./gen/mocks --all --keeptree --case snake
       - mockery --with-expecter --name "RpcReadWriter" --dir . --output ./gen/mocks --case snake
       - mockery --with-expecter --dir ./gen/testproto --output ./gen/testproto/mocks --all --keeptree --case snake
     sources:

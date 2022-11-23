@@ -13,7 +13,6 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 
 	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/gen/mocks"
@@ -435,10 +434,8 @@ func TestRecvMsg(t *testing.T) {
 		rw.EXPECT().Read(ctx).Return(&rpc, nil)
 
 		var got testproto.Msg
-		is.Equal(
-			status.Error(codes.Internal, codes.Internal.String()),
-			stream.RecvMsg(&got),
-		)
+		err = stream.RecvMsg(&got)
+		is.Error(err)
 	})
 }
 
