@@ -540,7 +540,9 @@ func TestChainUnaryInterceptor(t *testing.T) {
 	client, ctx, teardown := setupOpts(
 		service,
 		[]client.DialOption{
-			client.WithChainUnaryInterceptor(clientInterceptors...),
+			client.WithUnaryInterceptor(
+				grpcMiddleware.ChainUnaryClient(clientInterceptors...),
+			),
 		},
 		[]server.ServerOption{
 			server.UnaryInterceptor(
@@ -723,7 +725,9 @@ func TestChainStreamInterceptor(t *testing.T) {
 	client, ctx, teardown := setupOpts(
 		service,
 		[]client.DialOption{
-			client.WithChainStreamInterceptor(clientInterceptors...),
+			client.WithStreamInterceptor(
+				grpcMiddleware.ChainStreamClient(clientInterceptors...),
+			),
 		},
 		[]server.ServerOption{
 			server.StreamInterceptor(

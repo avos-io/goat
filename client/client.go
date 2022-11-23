@@ -21,10 +21,8 @@ type ClientConn struct {
 
 	codec encoding.Codec
 
-	unaryInterceptor        grpc.UnaryClientInterceptor
-	chainUnaryInterceptors  []grpc.UnaryClientInterceptor
-	streamInterceptor       grpc.StreamClientInterceptor
-	chainStreamInterceptors []grpc.StreamClientInterceptor
+	unaryInterceptor  grpc.UnaryClientInterceptor
+	streamInterceptor grpc.StreamClientInterceptor
 }
 
 var _ grpc.ClientConnInterface = (*ClientConn)(nil)
@@ -38,9 +36,6 @@ func NewClientConn(conn goat.RpcReadWriter, opts ...DialOption) *ClientConn {
 	for _, opt := range opts {
 		opt.apply(&cc)
 	}
-
-	cc.unaryInterceptor = chainedUnaryInterceptors(&cc)
-	cc.streamInterceptor = chainedStreamInterceptors(&cc)
 
 	return &cc
 }
@@ -186,131 +181,4 @@ func headersFromContext(ctx context.Context) []*wrapped.KeyValue {
 		})
 	}
 	return h
-}
-
-// chainedUnaryInterceptors chains all unary client interceptors into one.
-func chainedUnaryInterceptors(cc *ClientConn) grpc.UnaryClientInterceptor {
-	interceptors := cc.chainUnaryInterceptors
-	if cc.unaryInterceptor != nil {
-		interceptors = append(
-			[]grpc.UnaryClientInterceptor{cc.unaryInterceptor},
-			interceptors...,
-		)
-	}
-	switch len(interceptors) {
-	case 0:
-		return nil
-	case 1:
-		return interceptors[0]
-	default:
-		return func(
-			ctx context.Context,
-			method string,
-			req interface{},
-			reply interface{},
-			cc *grpc.ClientConn,
-			invoker grpc.UnaryInvoker,
-			opts ...grpc.CallOption,
-		) error {
-			return interceptors[0](
-				ctx,
-				method,
-				req,
-				reply,
-				cc,
-				chainInvoker(interceptors, 0, invoker),
-				opts...,
-			)
-		}
-	}
-}
-
-// chainInvoker recursively generates the chained unary invoker.
-func chainInvoker(
-	interceptors []grpc.UnaryClientInterceptor,
-	currIdx int,
-	final grpc.UnaryInvoker,
-) grpc.UnaryInvoker {
-	if currIdx == len(interceptors)-1 {
-		return final
-	}
-	return func(
-		ctx context.Context,
-		method string,
-		req interface{},
-		reply interface{},
-		cc *grpc.ClientConn,
-		opts ...grpc.CallOption,
-	) error {
-		return interceptors[currIdx+1](
-			ctx,
-			method,
-			req,
-			reply,
-			cc,
-			chainInvoker(interceptors, currIdx+1, final),
-			opts...,
-		)
-	}
-}
-
-// chainedStreamInterceptors chains all stream client interceptors into one.
-func chainedStreamInterceptors(cc *ClientConn) grpc.StreamClientInterceptor {
-	interceptors := cc.chainStreamInterceptors
-	if cc.streamInterceptor != nil {
-		interceptors = append(
-			[]grpc.StreamClientInterceptor{cc.streamInterceptor},
-			interceptors...,
-		)
-	}
-	switch len(interceptors) {
-	case 0:
-		return nil
-	case 1:
-		return interceptors[0]
-	default:
-		return func(
-			ctx context.Context,
-			desc *grpc.StreamDesc,
-			cc *grpc.ClientConn,
-			method string,
-			streamer grpc.Streamer,
-			opts ...grpc.CallOption,
-		) (grpc.ClientStream, error) {
-			return interceptors[0](
-				ctx,
-				desc,
-				cc,
-				method,
-				chainStreamer(interceptors, 0, streamer),
-				opts...)
-		}
-	}
-}
-
-// chainStreamer recursively generates the chained client stream constructor.
-func chainStreamer(
-	interceptors []grpc.StreamClientInterceptor,
-	currIdx int,
-	final grpc.Streamer,
-) grpc.Streamer {
-	if currIdx == len(interceptors)-1 {
-		return final
-	}
-	return func(
-		ctx context.Context,
-		desc *grpc.StreamDesc,
-		cc *grpc.ClientConn,
-		method string,
-		opts ...grpc.CallOption,
-	) (grpc.ClientStream, error) {
-		return interceptors[currIdx+1](
-			ctx,
-			desc,
-			cc,
-			method,
-			chainStreamer(interceptors, currIdx+1, final),
-			opts...,
-		)
-	}
 }

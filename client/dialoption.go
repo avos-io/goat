@@ -39,31 +39,3 @@ func WithStreamInterceptor(i grpc.StreamClientInterceptor) DialOption {
 		cc.streamInterceptor = i
 	})
 }
-
-// WithChainUnaryInterceptor returns a DialOption that specifies the chained
-// interceptor for unary RPCs. The first interceptor will be the outer most,
-// while the last interceptor will be the inner most wrapper around the real
-// call. All interceptors added by this method will be chained, and the
-// interceptor defined by WithUnaryInterceptor will always be prepended to the
-// chain.
-//
-// WARNING: the interceptor will receive a nil *grpc.ClientConn. See pkg doc.
-func WithChainUnaryInterceptor(is ...grpc.UnaryClientInterceptor) DialOption {
-	return dialOptFunc(func(cc *ClientConn) {
-		cc.chainUnaryInterceptors = append(cc.chainUnaryInterceptors, is...)
-	})
-}
-
-// WithChainStreamInterceptor returns a DialOption that specifies the chained
-// interceptor for streaming RPCs. The first interceptor will be the outer most,
-// while the last interceptor will be the inner most wrapper around the real
-// call. All interceptors added by this method will be chained, and the
-// interceptor defined by WithStreamInterceptor will always be prepended to the
-// chain.
-//
-// WARNING: the interceptor will receive a nil *grpc.ClientConn. See pkg doc.
-func WithChainStreamInterceptor(is ...grpc.StreamClientInterceptor) DialOption {
-	return dialOptFunc(func(cc *ClientConn) {
-		cc.chainStreamInterceptors = append(cc.chainStreamInterceptors, is...)
-	})
-}
