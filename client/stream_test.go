@@ -17,7 +17,7 @@ import (
 
 	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/gen/mocks"
-	"github.com/avos-io/goat/gen/testproto"
+	testproto "github.com/avos-io/goat/gen/test"
 	"github.com/avos-io/goat/internal"
 )
 
