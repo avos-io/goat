@@ -3,7 +3,7 @@ syntax = "proto3";
 import "google/protobuf/any.proto";
 
 package goat;
-option go_package = "./goat";
+option go_package = "github.com/avos-io/goat/gen/goat";
 
 message Rpc {
     uint64 id = 1;
