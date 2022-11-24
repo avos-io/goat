@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package grpcwebsockets;
+package goat;
 option go_package = "./testproto";
 
 message Msg {

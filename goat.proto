@@ -2,8 +2,8 @@ syntax = "proto3";
 
 import "google/protobuf/any.proto";
 
-package grpcwebsockets;
-option go_package = "./wrapped";
+package goat;
+option go_package = "./goat";
 
 message Rpc {
     uint64 id = 1;
