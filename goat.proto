@@ -3,8 +3,7 @@ syntax = "proto3";
 import "google/protobuf/any.proto";
 
 package goat;
-option go_package = "github.com/avos-io/protorepo/gen/go/goat";
-option java_package = "io.avos.protorepo.goat";
+option go_package = "./goat";
 
 message Rpc {
     uint64 id = 1;
