@@ -312,7 +312,7 @@ func (h *handler) runStream(
 			return nil, ctx.Err()
 		}
 	}
-	rw := internal.NewFnReadWriter(r, h.rw.Write)
+	rw := goat.NewFnReadWriter(r, h.rw.Write)
 
 	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
 	if err != nil {
