@@ -248,7 +248,7 @@ func (h *handler) processUnaryRpc(
 	}
 	defer cancel()
 
-	fullMethod := fmt.Sprintf("%s/%s", info.name, md.MethodName)
+	fullMethod := fmt.Sprintf("/%s/%s", info.name, md.MethodName)
 	sts := server.NewUnaryServerTransportStream(fullMethod)
 	ctx = grpc.NewContextWithServerTransportStream(ctx, sts)
 
@@ -378,7 +378,7 @@ func (h *handler) runStream(
 	defer cancel()
 
 	si := &grpc.StreamServerInfo{
-		FullMethod:     fmt.Sprintf("%s/%s", info.name, sd.StreamName),
+		FullMethod:     fmt.Sprintf("/%s/%s", info.name, sd.StreamName),
 		IsClientStream: sd.ClientStreams,
 		IsServerStream: sd.ServerStreams,
 	}

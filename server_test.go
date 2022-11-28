@@ -49,7 +49,7 @@ func TestUnary(t *testing.T) {
 		defer srv.Stop()
 
 		id := uint64(99)
-		method := testproto.TestService_ServiceDesc.ServiceName + "/Unary"
+		method := "/" + testproto.TestService_ServiceDesc.ServiceName + "/Unary"
 		sent := testproto.Msg{Value: 42}
 		exp := testproto.Msg{Value: 43}
 
@@ -89,7 +89,7 @@ func TestUnary(t *testing.T) {
 		defer srv.Stop()
 
 		id := uint64(1)
-		method := testproto.TestService_ServiceDesc.ServiceName + "/Unary"
+		method := "/" + testproto.TestService_ServiceDesc.ServiceName + "/Unary"
 		sent := testproto.Msg{Value: 42}
 
 		service := mocks.NewTestServiceServer(t)
