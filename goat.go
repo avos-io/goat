@@ -8,10 +8,12 @@ package goat
 import (
 	"context"
 	"fmt"
+	"strings"
+
+	"google.golang.org/grpc/metadata"
 
 	proto "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/internal"
-	"google.golang.org/grpc/metadata"
 )
 
 type Rpc = proto.Rpc
@@ -86,4 +88,41 @@ func NewOutgoingContextWithHeaders(rpc *Rpc) (context.Context, error) {
 	}
 
 	return metadata.NewOutgoingContext(context.Background(), md), nil
+}
+
+// SetInternalHeader sets an internal header on the Rpc. Internal headers must
+// be prefixed with "X-"
+func SetInternalHeader(rpc *Rpc, key, val string) error {
+	if !strings.HasPrefix(key, "X-") {
+		return fmt.Errorf("SetInternalHeader: header must be prefixed with 'X-'")
+	}
+	if rpc == nil {
+		return fmt.Errorf("SetInternalHeader: rpc nil")
+	}
+	if rpc.Header == nil {
+		return fmt.Errorf("SetInternalHeader: rpc header nil")
+	}
+
+	header := &proto.KeyValue{Key: key, Value: val}
+
+	if rpc.Header.Headers == nil {
+		rpc.Header.Headers = []*proto.KeyValue{header}
+	} else {
+		rpc.Header.Headers = append(rpc.Header.Headers, header)
+	}
+	return nil
+}
+
+// GetInternalHeader gets an internal header from the Rpc by key. Internal
+// headers must be prefixed with "X-"
+func GetInternalHeader(rpc *Rpc, key string) (string, bool) {
+	if !strings.HasPrefix(key, "X-") {
+		return "", false
+	}
+	for _, h := range rpc.GetHeader().GetHeaders() {
+		if h.Key == key {
+			return h.Value, true
+		}
+	}
+	return "", false
 }

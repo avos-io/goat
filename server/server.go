@@ -219,10 +219,19 @@ func (h *handler) processUnaryRpc(
 	resp, appErr := md.Handler(info.serviceImpl, ctx, dec, h.srv.unaryInterceptor)
 
 	respH := internal.ToKeyValue(sts.GetHeaders())
+
+	// insert internal headers
+	for _, h := range rpc.GetHeader().GetHeaders() {
+		if strings.HasPrefix(h.Key, "X-") {
+			respH = append(respH, h)
+		}
+	}
+
 	respHeader := &wrapped.RequestHeader{
 		Method:  fullMethod,
 		Headers: respH,
 	}
+
 	respTrailer := &wrapped.Trailer{
 		Metadata: internal.ToKeyValue(sts.GetTrailers()),
 	}
@@ -334,6 +343,14 @@ func (h *handler) runStream(
 
 	sts := newServerTransportStream(si.FullMethod, stream)
 	stream.SetContext(grpc.NewContextWithServerTransportStream(ctx, sts))
+
+	internalHeaders := []*wrapped.KeyValue{}
+	for _, h := range rpc.GetHeader().GetHeaders() {
+		if strings.HasPrefix(h.Key, "X-") {
+			internalHeaders = append(internalHeaders, h)
+		}
+	}
+	stream.SetInternalHeaders(internalHeaders)
 
 	var appErr error
 	if h.srv.streamInterceptor != nil {

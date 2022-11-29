@@ -9,12 +9,9 @@ message Rpc {
     uint64 id = 1;
     RequestHeader header = 2;
     ResponseStatus status = 3;
-    Body body = 4;  // Request or response body (protobuf data)
+    Body body = 4;
 
-    // Stream control responses
     Trailer trailer = 5;
-    //Error error = 6;
-    //Cancel cancel = 7;
 }
 
 message RequestHeader {
@@ -35,6 +32,7 @@ message KeyValue {
     string value = 2;
 }
 
+// Request or response body (protobuf data)
 message Body {
     bytes data = 1;
 }
@@ -43,3 +41,4 @@ message Body {
 message Trailer {
     repeated KeyValue metadata = 1;
 }
+

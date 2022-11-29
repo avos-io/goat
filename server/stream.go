@@ -36,6 +36,8 @@ type serverStream struct {
 		headersSent  bool
 		trailers     []metadata.MD
 		trailersSent bool
+
+		internalHeaders []*wrapped.KeyValue
 	}
 }
 
@@ -105,6 +107,16 @@ func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
 	return nil
 }
 
+// SetInternalHeaders sets the stream's internal headers. Internal headers are
+// added on every Rpc message and not intended to be read by the service which
+// is ultimately implemented on top of Goat.
+func (ss *serverStream) SetInternalHeaders(hdrs []*wrapped.KeyValue) {
+	ss.protected.Lock()
+	defer ss.protected.Unlock()
+
+	ss.protected.internalHeaders = hdrs
+}
+
 // SetTrailer sets the trailer metadata which will be sent with the RPC status.
 // When called more than once, all the provided metadata will be merged.
 func (ss *serverStream) SetTrailer(md metadata.MD) {
@@ -151,7 +163,8 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 	rpc := wrapped.Rpc{
 		Id: ss.id,
 		Header: &wrapped.RequestHeader{
-			Method: ss.method,
+			Method:  ss.method,
+			Headers: ss.protected.internalHeaders,
 		},
 		Body: &wrapped.Body{
 			Data: body,
@@ -159,7 +172,10 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 	}
 
 	if !ss.protected.headersSent {
-		rpc.Header.Headers = internal.ToKeyValue(ss.protected.headers...)
+		rpc.Header.Headers = append(
+			rpc.Header.Headers,
+			internal.ToKeyValue(ss.protected.headers...)...,
+		)
 		ss.protected.headersSent = true
 	}
 
@@ -226,7 +242,8 @@ func (ss *serverStream) SendTrailer(trErr error) error {
 	tr := wrapped.Rpc{
 		Id: ss.id,
 		Header: &wrapped.RequestHeader{
-			Method: ss.method,
+			Method:  ss.method,
+			Headers: ss.protected.internalHeaders,
 		},
 		Status: &wrapped.ResponseStatus{
 			Code:    int32(codes.OK),
@@ -238,7 +255,9 @@ func (ss *serverStream) SendTrailer(trErr error) error {
 	}
 
 	if !ss.protected.headersSent {
-		tr.Header.Headers = internal.ToKeyValue(ss.protected.headers...)
+		tr.Header.Headers = append(
+			ss.protected.internalHeaders,
+			internal.ToKeyValue(ss.protected.headers...)...)
 		ss.protected.headersSent = true
 	}
 
