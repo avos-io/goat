@@ -23,8 +23,9 @@ type RpcMultiplexer struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	streamCounter uint64
 	mutex         sync.Mutex
+	streamCounter uint64
+	rErr          error
 
 	codec encoding.Codec
 }
@@ -37,13 +38,33 @@ func NewRpcMultiplexer(rw goat.RpcReadWriter) *RpcMultiplexer {
 	}
 
 	rm.ctx, rm.cancel = context.WithCancel(context.Background())
-	go rm.readLoop()
+
+	go func() {
+		err := rm.readLoop()
+		rm.closeError(err)
+	}()
 
 	return rm
 }
 
 func (rm *RpcMultiplexer) Close() {
+	rm.closeError(nil)
+}
+
+func (rm *RpcMultiplexer) closeError(err error) {
+	rm.mutex.Lock()
+	defer rm.mutex.Unlock()
+
+	log.Info().Msg("RpcMultiplexer: Close")
 	rm.cancel()
+
+	if err != nil {
+		rm.rErr = err
+		for id, ch := range rm.handlers {
+			close(ch)
+			delete(rm.handlers, id)
+		}
+	}
 }
 
 func (rm *RpcMultiplexer) CallUnaryMethod(
@@ -51,6 +72,11 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 	header *wrapped.RequestHeader,
 	body *wrapped.Body,
 ) (*wrapped.Body, error) {
+
+	if err := rm.readErrorIfDone(); err != nil {
+		return nil, err
+	}
+
 	streamId := atomic.AddUint64(&rm.streamCounter, 1)
 
 	respChan := make(chan *wrapped.Rpc, 1)
@@ -94,7 +120,12 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 // close the stream.
 func (rm *RpcMultiplexer) NewStreamReadWriter(
 	ctx context.Context,
-) (uint64, goat.RpcReadWriter, func()) {
+) (uint64, goat.RpcReadWriter, func(), error) {
+
+	if err := rm.readErrorIfDone(); err != nil {
+		return 0, nil, nil, err
+	}
+
 	streamId := atomic.AddUint64(&rm.streamCounter, 1)
 
 	respChan := make(chan *wrapped.Rpc, 1)
@@ -109,6 +140,9 @@ func (rm *RpcMultiplexer) NewStreamReadWriter(
 			select {
 			case rpc, ok := <-respChan:
 				if !ok {
+					if err := rm.readErrorIfDone(); err != nil {
+						return nil, err
+					}
 					return nil, fmt.Errorf("respChan closed")
 				}
 				return rpc, nil
@@ -116,17 +150,28 @@ func (rm *RpcMultiplexer) NewStreamReadWriter(
 				return nil, ctx.Err()
 			}
 		},
-		rm.rw.Write,
+		func(ctx context.Context, rpc *wrapped.Rpc) error {
+			err := rm.rw.Write(ctx, rpc)
+			if err != nil {
+				if rErr := rm.readErrorIfDone(); rErr != nil {
+					return rErr
+				}
+			}
+			return err
+		},
 	)
-	return streamId, rw, teardown
+	return streamId, rw, teardown, nil
 }
 
-func (rm *RpcMultiplexer) readLoop() {
+func (rm *RpcMultiplexer) readLoop() error {
 	for {
 		rpc, err := rm.rw.Read(rm.ctx)
+
 		if err != nil {
-			return
+			log.Error().Err(err).Msg("Mux: readLoop error")
+			return err
 		}
+
 		rm.handleResponse(rpc)
 	}
 }
@@ -159,4 +204,11 @@ func (rm *RpcMultiplexer) unregisterHandler(id uint64) {
 	}
 
 	delete(rm.handlers, id)
+}
+
+func (rm *RpcMultiplexer) readErrorIfDone() error {
+	rm.mutex.Lock()
+	defer rm.mutex.Unlock()
+
+	return rm.rErr
 }

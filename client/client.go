@@ -133,7 +133,10 @@ func (cc *ClientConn) newStream(
 		log.Panic().Msg("NewStream: opts unsupported")
 	}
 
-	id, rw, teardown := cc.mp.NewStreamReadWriter(ctx)
+	id, rw, teardown, err := cc.mp.NewStreamReadWriter(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	// open stream
 	rpc := wrapped.Rpc{
@@ -143,7 +146,7 @@ func (cc *ClientConn) newStream(
 			Headers: headersFromContext(ctx),
 		},
 	}
-	err := rw.Write(ctx, &rpc)
+	err = rw.Write(ctx, &rpc)
 	if err != nil {
 		log.Error().Err(err).Msg("NewStream: failed to open")
 		return nil, err
