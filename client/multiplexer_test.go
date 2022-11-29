@@ -72,7 +72,8 @@ func TestUnaryMethodSuccess(t *testing.T) {
 	tc.On("Read", mock.Anything).Return(readChan)
 	tc.On("Write", mock.Anything, mock.Anything).Return(nil).
 		Run(func(args mock.Arguments) {
-			readChan <- readReturn{makeResponse("1", &testproto.Msg{Value: 42}), nil}
+			rpc := args.Get(1).(*wrapped.Rpc)
+			readChan <- readReturn{makeResponse(rpc.Id, &testproto.Msg{Value: 42}), nil}
 		})
 
 	valBytes, err := rm.CallUnaryMethod(
@@ -103,9 +104,10 @@ func TestUnaryMethodFailure(t *testing.T) {
 	tc.On("Read", mock.Anything).Return(readChan)
 	tc.On("Write", mock.Anything, mock.Anything).Return(nil).
 		Run(func(args mock.Arguments) {
+			rpc := args.Get(1).(*wrapped.Rpc)
 			readChan <- readReturn{
 				makeErrorResponse(
-					"1",
+					rpc.Id,
 					&wrapped.ResponseStatus{
 						Code:    int32(codes.InvalidArgument),
 						Message: "Hello world"},
