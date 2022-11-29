@@ -144,7 +144,9 @@ func TestNewStreamReadWriter(t *testing.T) {
 		rm := client.NewRpcMultiplexer(rw)
 		defer rm.Close()
 
-		id, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		id, srw, teardown, err := rm.NewStreamReadWriter(context.Background())
+		require.NoError(t, err)
+
 		defer teardown()
 
 		ctx := context.Background()
@@ -175,7 +177,9 @@ func TestNewStreamReadWriter(t *testing.T) {
 		readChan := make(chan readReturn)
 		tc.On("Read", mock.Anything).Return(readChan)
 
-		id, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		id, srw, teardown, err := rm.NewStreamReadWriter(context.Background())
+		require.NoError(t, err)
+
 		defer teardown()
 
 		rpc := &wrapped.Rpc{
@@ -206,7 +210,9 @@ func TestNewStreamReadWriter(t *testing.T) {
 		readChan := make(chan readReturn)
 		tc.On("Read", mock.Anything).Return(readChan)
 
-		id, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		id, srw, teardown, err := rm.NewStreamReadWriter(context.Background())
+		require.NoError(t, err)
+
 		defer teardown()
 
 		readChan <- readReturn{&wrapped.Rpc{Id: 9001}, nil}
@@ -240,7 +246,9 @@ func TestNewStreamReadWriter(t *testing.T) {
 		readChan := make(chan readReturn)
 		tc.On("Read", mock.Anything).Return(readChan)
 
-		_, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		_, srw, teardown, err := rm.NewStreamReadWriter(context.Background())
+		require.NoError(t, err)
+
 		defer teardown()
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -274,7 +282,9 @@ func TestNewStreamReadWriter(t *testing.T) {
 		readChan := make(chan readReturn)
 		tc.On("Read", mock.Anything).Return(readChan)
 
-		_, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		_, srw, teardown, err := rm.NewStreamReadWriter(context.Background())
+
+		require.NoError(t, err)
 
 		teardown()
 
