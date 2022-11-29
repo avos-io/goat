@@ -136,7 +136,7 @@ type handler struct {
 	codec encoding.Codec
 
 	mu      sync.Mutex // protects streams
-	streams map[uint64]chan *wrapped.Rpc
+	streams map[string]chan *wrapped.Rpc
 }
 
 func newHandler(ctx context.Context, srv *Server, rw goat.RpcReadWriter) *handler {
@@ -145,7 +145,7 @@ func newHandler(ctx context.Context, srv *Server, rw goat.RpcReadWriter) *handle
 		srv:     srv,
 		rw:      rw,
 		codec:   encoding.GetCodec(proto.Name),
-		streams: map[uint64]chan *wrapped.Rpc{},
+		streams: map[string]chan *wrapped.Rpc{},
 	}
 }
 
@@ -296,7 +296,7 @@ func (h *handler) runStream(
 	info *serviceInfo,
 	sd *grpc.StreamDesc,
 	rpc *wrapped.Rpc,
-	streamId uint64,
+	streamId string,
 	rCh chan *wrapped.Rpc,
 ) error {
 	ctx := context.Background()
@@ -306,7 +306,7 @@ func (h *handler) runStream(
 	if rpc.GetTrailer() != nil {
 		// The client may send a trailer to end a stream after we've already ended
 		// it, in which case we don't want to lazily create a new stream here.
-		log.Info().Msgf("ignoring client EOF for torn-down stream %d", streamId)
+		log.Info().Msgf("ignoring client EOF for torn-down stream %s", streamId)
 		return nil
 	}
 
@@ -368,7 +368,7 @@ func (h *handler) runStream(
 	return nil
 }
 
-func (h *handler) unregisterStream(id uint64) {
+func (h *handler) unregisterStream(id string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 

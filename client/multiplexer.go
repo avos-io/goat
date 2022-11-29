@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
@@ -18,22 +18,20 @@ import (
 
 type RpcMultiplexer struct {
 	rw       goat.RpcReadWriter
-	handlers map[uint64]chan *wrapped.Rpc
+	handlers map[string]chan *wrapped.Rpc
 
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	mutex         sync.Mutex
-	streamCounter uint64
-	rErr          error
-
+	mutex sync.Mutex
+	rErr  error
 	codec encoding.Codec
 }
 
 func NewRpcMultiplexer(rw goat.RpcReadWriter) *RpcMultiplexer {
 	rm := &RpcMultiplexer{
 		rw:       rw,
-		handlers: make(map[uint64]chan *wrapped.Rpc),
+		handlers: make(map[string]chan *wrapped.Rpc),
 		codec:    encoding.GetCodec(proto.Name),
 	}
 
@@ -77,7 +75,7 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 		return nil, err
 	}
 
-	streamId := atomic.AddUint64(&rm.streamCounter, 1)
+	streamId := uuid.NewString()
 
 	respChan := make(chan *wrapped.Rpc, 1)
 
@@ -120,13 +118,13 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 // close the stream.
 func (rm *RpcMultiplexer) NewStreamReadWriter(
 	ctx context.Context,
-) (uint64, goat.RpcReadWriter, func(), error) {
+) (string, goat.RpcReadWriter, func(), error) {
 
 	if err := rm.readErrorIfDone(); err != nil {
-		return 0, nil, nil, err
+		return "", nil, nil, err
 	}
 
-	streamId := atomic.AddUint64(&rm.streamCounter, 1)
+	streamId := uuid.NewString()
 
 	respChan := make(chan *wrapped.Rpc, 1)
 	rm.registerHandler(streamId, respChan)
@@ -182,20 +180,20 @@ func (rm *RpcMultiplexer) handleResponse(rpc *wrapped.Rpc) {
 
 	ch, ok := rm.handlers[rpc.GetId()]
 	if !ok {
-		log.Error().Msgf("Mux: unhandled Rpc %d", rpc.GetId())
+		log.Error().Msgf("Mux: unhandled Rpc %s", rpc.GetId())
 		return
 	}
 	ch <- rpc
 }
 
-func (rm *RpcMultiplexer) registerHandler(id uint64, c chan *wrapped.Rpc) {
+func (rm *RpcMultiplexer) registerHandler(id string, c chan *wrapped.Rpc) {
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
 
 	rm.handlers[id] = c
 }
 
-func (rm *RpcMultiplexer) unregisterHandler(id uint64) {
+func (rm *RpcMultiplexer) unregisterHandler(id string) {
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
 

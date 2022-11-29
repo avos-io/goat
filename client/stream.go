@@ -23,7 +23,7 @@ import (
 type clientStream struct {
 	ctx context.Context
 
-	id     uint64
+	id     string
 	method string
 	codec  encoding.Codec
 
@@ -51,7 +51,7 @@ var _ grpc.ClientStream = (*clientStream)(nil)
 
 func newClientStream(
 	ctx context.Context,
-	id uint64,
+	id string,
 	method string,
 	rw goat.RpcReadWriter,
 	teardown func(),
@@ -214,7 +214,7 @@ func (cs *clientStream) RecvMsg(m interface{}) error {
 // for reading. Errors are held internally and will be yielded on the next
 // RecvMsg or SendMsg call, as per the gRPC semantics.
 func (cs *clientStream) readLoop() error {
-	log.Info().Uint64("id", cs.id).Msg("ClientStream started")
+	log.Info().Str("id", cs.id).Msg("ClientStream started")
 
 	var rErr error
 	var trailer *wrapped.Trailer
@@ -230,7 +230,7 @@ func (cs *clientStream) readLoop() error {
 		cs.protected.rErr = rErr
 		cs.protected.trailer = trailer
 
-		log.Info().Uint64("id", cs.id).Msg("ClientStream done")
+		log.Info().Str("id", cs.id).Msg("ClientStream done")
 	}()
 
 	onReady := func(err error, headers metadata.MD) {

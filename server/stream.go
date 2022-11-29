@@ -22,7 +22,7 @@ import (
 
 type serverStream struct {
 	ctx    context.Context
-	id     uint64
+	id     string
 	method string
 
 	codec encoding.Codec
@@ -45,7 +45,7 @@ var _ grpc.ServerStream = (*serverStream)(nil)
 
 func newServerStream(
 	ctx context.Context,
-	id uint64,
+	id string,
 	method string,
 	rw goat.RpcReadWriter,
 ) (*serverStream, error) {

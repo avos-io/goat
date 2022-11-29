@@ -45,7 +45,7 @@ func TestUnary(t *testing.T) {
 		srv := NewServer()
 		defer srv.Stop()
 
-		id := uint64(99)
+		id := "my_rpc"
 		method := "/" + testproto.TestService_ServiceDesc.ServiceName + "/Unary"
 		sent := testproto.Msg{Value: 42}
 		exp := testproto.Msg{Value: 43}
@@ -85,7 +85,7 @@ func TestUnary(t *testing.T) {
 		srv := NewServer()
 		defer srv.Stop()
 
-		id := uint64(1)
+		id := "my_rpc"
 		method := "/" + testproto.TestService_ServiceDesc.ServiceName + "/Unary"
 		sent := testproto.Msg{Value: 42}
 
@@ -125,7 +125,7 @@ func TestServerStream(t *testing.T) {
 		srv := NewServer()
 		defer srv.Stop()
 
-		id := uint64(99)
+		id := "99"
 		method := testproto.TestService_ServiceDesc.ServiceName + "/ServerStream"
 		sent := testproto.Msg{Value: 1}
 
@@ -272,7 +272,7 @@ func waitTimeout(t *testing.T, on chan struct{}) {
 	}
 }
 
-func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg) *wrapped.Rpc {
+func wrapRpc(id string, fullMethod string, msg *testproto.Msg) *wrapped.Rpc {
 	codec := encoding.GetCodec(proto.Name)
 
 	body, err := codec.Marshal(msg)

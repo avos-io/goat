@@ -6,7 +6,7 @@ package goat;
 option go_package = "github.com/avos-io/goat/gen";
 
 message Rpc {
-    uint64 id = 1;
+    string id = 1;
     RequestHeader header = 2;
     ResponseStatus status = 3;
     Body body = 4;

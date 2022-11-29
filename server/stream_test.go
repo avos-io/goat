@@ -30,7 +30,7 @@ func TestContext(t *testing.T) {
 		metadata.New(map[string]string{"foo": "1"}),
 	)
 	rw := mocks.NewRpcReadWriter(t)
-	stream, err := newServerStream(ctx, 0, "", rw)
+	stream, err := newServerStream(ctx, "my_stream", "", rw)
 	is.NoError(err)
 	is.Equal(ctx, stream.Context())
 
@@ -48,7 +48,7 @@ func TestHeaders(t *testing.T) {
 		is := require.New(t)
 
 		ctx := context.Background()
-		streamId := uint64(9001)
+		streamId := "my_stream"
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
 		stream, err := newServerStream(ctx, streamId, method, rw)
@@ -77,7 +77,7 @@ func TestHeaders(t *testing.T) {
 		is := require.New(t)
 
 		rw := mocks.NewRpcReadWriter(t)
-		stream, err := newServerStream(context.Background(), 0, "", rw)
+		stream, err := newServerStream(context.Background(), "my_stream", "", rw)
 		is.NoError(err)
 
 		rw.EXPECT().Write(mock.Anything, mock.Anything).Return(errTest)
@@ -88,7 +88,7 @@ func TestHeaders(t *testing.T) {
 		is := require.New(t)
 
 		ctx := context.Background()
-		streamId := uint64(9001)
+		streamId := "my_stream"
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
 		stream, err := newServerStream(ctx, streamId, method, rw)
@@ -133,7 +133,7 @@ func TestHeaders(t *testing.T) {
 		is := require.New(t)
 
 		ctx := context.Background()
-		streamId := uint64(9001)
+		streamId := "my_stream"
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
 		stream, err := newServerStream(ctx, streamId, method, rw)
@@ -176,7 +176,7 @@ func TestHeaders(t *testing.T) {
 		is := require.New(t)
 
 		ctx := context.Background()
-		streamId := uint64(9001)
+		streamId := "my_stream"
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
 		stream, err := newServerStream(ctx, streamId, method, rw)
@@ -205,7 +205,7 @@ func TestTrailers(t *testing.T) {
 		is := require.New(t)
 
 		ctx := context.Background()
-		streamId := uint64(9001)
+		streamId := "my_stream"
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
 		stream, err := newServerStream(ctx, streamId, method, rw)
@@ -243,7 +243,7 @@ func TestTrailers(t *testing.T) {
 		is := require.New(t)
 
 		ctx := context.Background()
-		streamId := uint64(9001)
+		streamId := "my_stream"
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
 		stream, err := newServerStream(ctx, streamId, method, rw)
@@ -269,7 +269,7 @@ func TestTrailers(t *testing.T) {
 		is := require.New(t)
 
 		ctx := context.Background()
-		streamId := uint64(9001)
+		streamId := "my_stream"
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
 		stream, err := newServerStream(ctx, streamId, method, rw)
@@ -288,7 +288,7 @@ func TestSendMsg(t *testing.T) {
 		is := require.New(t)
 
 		ctx := context.Background()
-		streamId := uint64(9001)
+		streamId := "my_stream"
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
 		stream, err := newServerStream(ctx, streamId, method, rw)
@@ -314,7 +314,7 @@ func TestSendMsg(t *testing.T) {
 		is := require.New(t)
 
 		ctx := context.Background()
-		streamId := uint64(9001)
+		streamId := "my_stream"
 		method := "my_method"
 		rw := mocks.NewRpcReadWriter(t)
 		stream, err := newServerStream(ctx, streamId, method, rw)
@@ -331,7 +331,7 @@ func TestRecvMsg(t *testing.T) {
 		is := require.New(t)
 
 		ctx := context.Background()
-		streamId := uint64(9001)
+		streamId := "my_stream"
 		method := "method"
 		rw := mocks.NewRpcReadWriter(t)
 		stream, err := newServerStream(ctx, streamId, method, rw)
@@ -369,7 +369,7 @@ func TestRecvMsg(t *testing.T) {
 		is := require.New(t)
 
 		ctx := context.Background()
-		streamId := uint64(9001)
+		streamId := "my_stream"
 		method := "method"
 		rw := mocks.NewRpcReadWriter(t)
 		stream, err := newServerStream(ctx, streamId, method, rw)
@@ -385,7 +385,7 @@ func TestRecvMsg(t *testing.T) {
 		is := require.New(t)
 
 		ctx := context.Background()
-		streamId := uint64(9001)
+		streamId := "my_stream"
 		method := "method"
 		rw := mocks.NewRpcReadWriter(t)
 		stream, err := newServerStream(ctx, streamId, method, rw)
@@ -413,7 +413,7 @@ func TestRecvMsg(t *testing.T) {
 		is := require.New(t)
 
 		ctx := context.Background()
-		streamId := uint64(9001)
+		streamId := "my_stream"
 		method := "method"
 		rw := mocks.NewRpcReadWriter(t)
 		stream, err := newServerStream(ctx, streamId, method, rw)
