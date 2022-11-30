@@ -348,6 +348,15 @@ func (h *handler) runStream(
 
 	defer h.unregisterStream(streamId)
 
+	if rpc.GetBody() != nil {
+		// The first Rpc in a stream is used to tell the server to start the stream;
+		// it must have an empty body. If this isn't the case, it must be because
+		// we've missed the first Rpc in the stream.
+		log.Info().Msgf("did not expect body: calling RST stream %s", streamId)
+		h.resetStream(rpc)
+		return nil
+	}
+
 	if rpc.GetTrailer() != nil {
 		// The client may send a trailer to end a stream after we've already ended
 		// it, in which case we don't want to lazily create a new stream here.
@@ -424,6 +433,20 @@ func (h *handler) unregisterStream(id uint64) {
 	}
 
 	delete(h.streams, id)
+}
+
+// resetStream instructs the caller to tear down and restart the stream. We call
+// this if something has gone irrecoverably wrong in the stream.
+func (h *handler) resetStream(rpc *wrapped.Rpc) {
+	h.rw.Write(h.ctx, &wrapped.Rpc{
+		Id:     rpc.GetId(),
+		Header: rpc.GetHeader(),
+		Status: &wrapped.ResponseStatus{
+			Code:    int32(codes.Aborted),
+			Message: "RST stream",
+		},
+		Trailer: &wrapped.Trailer{},
+	})
 }
 
 // contextFromHeaders returns a new incoming context with metadata populated
