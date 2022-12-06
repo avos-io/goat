@@ -135,18 +135,23 @@ type handler struct {
 	rw    goat.RpcReadWriter
 	codec encoding.Codec
 
-	mu      sync.Mutex // protects streams
-	streams map[string]chan *wrapped.Rpc
+	streams struct {
+		sync.Mutex
+
+		value map[string]chan *wrapped.Rpc
+	}
 }
 
 func newHandler(ctx context.Context, srv *Server, rw goat.RpcReadWriter) *handler {
-	return &handler{
-		ctx:     ctx,
-		srv:     srv,
-		rw:      rw,
-		codec:   encoding.GetCodec(proto.Name),
-		streams: map[string]chan *wrapped.Rpc{},
+	h := &handler{
+		ctx:   ctx,
+		srv:   srv,
+		rw:    rw,
+		codec: encoding.GetCodec(proto.Name),
 	}
+	h.streams.value = map[string]chan *wrapped.Rpc{}
+
+	return h
 }
 
 func (h *handler) serve() error {
@@ -276,17 +281,17 @@ func (h *handler) processStreamingRpc(
 	sd *grpc.StreamDesc,
 	rpc *wrapped.Rpc,
 ) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	h.streams.Lock()
+	defer h.streams.Unlock()
 
-	if ch, ok := h.streams[rpc.Id]; ok {
+	if ch, ok := h.streams.value[rpc.Id]; ok {
 		ch <- rpc
 		return nil
 	}
 
 	streamId := rpc.Id
 	ch := make(chan *wrapped.Rpc, 1)
-	h.streams[streamId] = ch
+	h.streams.value[streamId] = ch
 
 	go h.runStream(info, sd, rpc, streamId, ch)
 	return nil
@@ -378,14 +383,14 @@ func (h *handler) runStream(
 }
 
 func (h *handler) unregisterStream(id string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	h.streams.Lock()
+	defer h.streams.Unlock()
 
-	if ch, ok := h.streams[id]; ok {
+	if ch, ok := h.streams.value[id]; ok {
 		close(ch)
 	}
 
-	delete(h.streams, id)
+	delete(h.streams.value, id)
 }
 
 // resetStream instructs the caller to tear down and restart the stream. We call
