@@ -135,7 +135,8 @@ type unaryRpcArgs struct {
 
 // handler for a specific goat.RpcReadWriter
 type handler struct {
-	ctx context.Context
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	srv *Server
 
@@ -150,19 +151,22 @@ type handler struct {
 }
 
 func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
+	ctx, cancel := context.WithCancel(ctx)
+
 	return &handler{
 		ctx:          ctx,
+    cancel:       cancel,
 		srv:          srv,
 		rw:           rw,
 		codec:        encoding.GetCodec(proto.Name),
 		streams:      map[uint64]chan *wrapped.Rpc{},
 		writeChan:    make(chan *wrapped.Rpc),
 		unaryRpcChan: make(chan unaryRpcArgs),
-	}
+  }
 }
 
 func (h *handler) serve() error {
-	writeCtx, cancel := context.WithCancel(context.Background())
+	writeCtx, cancel := context.WithCancel(h.ctx)
 	defer cancel()
 
 	go func() {
@@ -176,7 +180,7 @@ func (h *handler) serve() error {
 		}
 	}()
 
-	unaryRpcCtx, unaryRpcCtxCancel := context.WithCancel(context.Background())
+	unaryRpcCtx, unaryRpcCtxCancel := context.WithCancel(h.ctx)
 	defer unaryRpcCtxCancel()
 
 	const numRpcWorkers = 8
@@ -344,8 +348,6 @@ func (h *handler) runStream(
 	streamId uint64,
 	rCh chan *wrapped.Rpc,
 ) error {
-	ctx := context.Background()
-
 	defer h.unregisterStream(streamId)
 
 	if rpc.GetBody() != nil {
@@ -380,7 +382,7 @@ func (h *handler) runStream(
 		return nil
 	})
 
-	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
+	ctx, cancel, err := contextFromHeaders(h.ctx, rpc.GetHeader())
 	if err != nil {
 		log.Panic().Err(err).Msg("failed to create newStream")
 	}
