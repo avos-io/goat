@@ -122,13 +122,13 @@ func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 
 func (s *Server) Serve(rw goat.RpcReadWriter) error {
 	h := newHandler(s.ctx, s, rw)
-	h.serve()
-	return nil
+	return h.serve()
 }
 
 // handler for a specific goat.RpcReadWriter
 type handler struct {
-	ctx context.Context
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	srv *Server
 
@@ -143,11 +143,14 @@ type handler struct {
 }
 
 func newHandler(ctx context.Context, srv *Server, rw goat.RpcReadWriter) *handler {
+	ctx, cancel := context.WithCancel(ctx)
+
 	h := &handler{
-		ctx:   ctx,
-		srv:   srv,
-		rw:    rw,
-		codec: encoding.GetCodec(proto.Name),
+		ctx:    ctx,
+		cancel: cancel,
+		srv:    srv,
+		rw:     rw,
+		codec:  encoding.GetCodec(proto.Name),
 	}
 	h.streams.value = map[string]chan *wrapped.Rpc{}
 
@@ -155,6 +158,8 @@ func newHandler(ctx context.Context, srv *Server, rw goat.RpcReadWriter) *handle
 }
 
 func (h *handler) serve() error {
+	defer h.cancel()
+
 	for {
 		rpc, err := h.rw.Read(h.ctx)
 		if err != nil {
@@ -304,8 +309,6 @@ func (h *handler) runStream(
 	streamId string,
 	rCh chan *wrapped.Rpc,
 ) error {
-	ctx := context.Background()
-
 	defer h.unregisterStream(streamId)
 
 	if rpc.GetBody() != nil {
@@ -337,7 +340,7 @@ func (h *handler) runStream(
 	}
 	rw := goat.NewFnReadWriter(r, h.rw.Write)
 
-	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
+	ctx, cancel, err := contextFromHeaders(h.ctx, rpc.GetHeader())
 	if err != nil {
 		log.Panic().Err(err).Msg("failed to create newStream")
 	}
