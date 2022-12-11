@@ -218,12 +218,15 @@ func (h *handler) processUnaryRpc(
 
 	resp, appErr := md.Handler(info.serviceImpl, ctx, dec, h.srv.unaryInterceptor)
 
+	// TODO: validate dest address really is us
+
 	respH := internal.ToKeyValue(sts.GetHeaders())
 	respHeader := &wrapped.RequestHeader{
 		Method:      fullMethod,
 		Headers:     respH,
 		Source:      rpc.Header.Destination,
 		Destination: rpc.Header.Source,
+		ProxyNext:   rpc.Header.ProxyRecord[0 : len(rpc.Header.ProxyRecord)-1],
 	}
 	respTrailer := &wrapped.Trailer{
 		Metadata: internal.ToKeyValue(sts.GetTrailers()),

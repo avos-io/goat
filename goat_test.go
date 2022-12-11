@@ -790,7 +790,7 @@ func setupOpts(
 	}()
 
 	client := testproto.NewTestServiceClient(
-		client.NewClientConn(clientConn, clientOpts...),
+		client.NewClientConn(clientConn, "src", "dst", clientOpts...),
 	)
 
 	teardown := func() {

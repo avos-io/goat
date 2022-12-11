@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/avos-io/goat"
 	"github.com/avos-io/goat/client"
@@ -280,6 +281,54 @@ func TestGoatOverWebsocketsSingleClientSingleServer(t *testing.T) {
 
 	tpClient := testproto.NewTestServiceClient(simClient.newClientConn("badf00d", "server0"))
 	result, err := tpClient.Unary(context.Background(), &testproto.Msg{Value: 11})
+	if err != nil {
+		panic(err)
+	}
+
+	require.Equal(t, int32(11), result.Value)
+}
+
+func TestRealProxy(t *testing.T) {
+	const (
+		proxyAddress     = "cloud:1"
+		serverAddress    = "cloud:2"
+		clientAddressFmt = "client:%x"
+	)
+
+	srv := server.NewServer()
+	echoServer := &echoServer{}
+	testproto.RegisterTestServiceServer(srv, echoServer)
+
+	proxy := e2e.NewProxy(
+		proxyAddress,
+		func(id string) (goat.RpcReadWriter, error) {
+			if id == serverAddress {
+				ps3, ps4 := net.Pipe()
+
+				go srv.Serve(e2e.NewGoatOverPipe(ps4))
+
+				return e2e.NewGoatOverPipe(ps3), nil
+			}
+
+			return nil, fmt.Errorf("invalid ID to connect to")
+		},
+		nil,
+		nil)
+
+	go proxy.Serve()
+
+	ps1, ps2 := net.Pipe()
+	cl1Address := fmt.Sprintf(clientAddressFmt, 1)
+
+	proxy.AddClient(cl1Address, e2e.NewGoatOverPipe(ps2))
+
+	simClient := newSimulatedClient(e2e.NewGoatOverPipe(ps1))
+	tpClient := testproto.NewTestServiceClient(simClient.newClientConn(cl1Address, serverAddress))
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*2))
+	defer cancel()
+
+	result, err := tpClient.Unary(ctx, &testproto.Msg{Value: 11})
 	if err != nil {
 		panic(err)
 	}

@@ -22,7 +22,8 @@ message RequestHeader {
     repeated KeyValue headers = 2;
     string source = 3;
     string destination = 4;
-    // repeated string proxy = 5;
+    repeated string proxy_record = 5;
+    repeated string proxy_next = 6;
 }
 
 // Based on https://cloud.google.com/apis/design/errors
