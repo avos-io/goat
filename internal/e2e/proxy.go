@@ -9,20 +9,17 @@ import (
 	wrapped "github.com/avos-io/goat/gen"
 )
 
-type ClientDisconnect func(id string, reason error)
-
-// TODO: in practice we want version info or similar to to able to construct a
-// version-specific service URL -- need to think about how that information is
-// flowed about the system.
-type DestinationAddressResolver func(destination string) string
-
+// Is free to modify the passed in header, e.g. changing the Destination.
+// If an error is returned, the RPC is dropped.
+type RpcIntercepter func(hdr *wrapped.RequestHeader) error
 type NewConnection func(id string) (goat.RpcReadWriter, error)
+type ClientDisconnect func(id string, reason error)
 
 type proxy struct {
 	id               string
 	newConnection    NewConnection
 	clientDisconnect ClientDisconnect
-	destAddrResolver DestinationAddressResolver
+	rpcIntercepter   RpcIntercepter
 
 	mutex    sync.Mutex
 	clients  map[string]*proxyClient
@@ -45,13 +42,13 @@ type proxyClient struct {
 func NewProxy(
 	id string,
 	newConnection NewConnection,
-	resolveDestinationAddress DestinationAddressResolver,
+	rpcIntercepter RpcIntercepter,
 	onClientDisconnect ClientDisconnect,
 ) *proxy {
 	return &proxy{
 		id:               id,
 		newConnection:    newConnection,
-		destAddrResolver: resolveDestinationAddress,
+		rpcIntercepter:   rpcIntercepter,
 		clientDisconnect: onClientDisconnect,
 		commands:         make(chan command),
 		clients:          make(map[string]*proxyClient),
@@ -119,25 +116,29 @@ func (p *proxy) forwardRpc(source string, rpc *wrapped.Rpc) {
 
 	// Apply any sort of address translation first: this allows implementing a
 	// NAT or DNS like functionality on top of this library.
-	if p.destAddrResolver != nil {
-		rpc.Header.Destination = p.destAddrResolver(rpc.Header.Destination)
+	if p.rpcIntercepter != nil {
+		err := p.rpcIntercepter(rpc.Header)
+		if err != nil {
+			return
+		}
 	}
-
-	// Mark the proxy route this RPC is taking so responses can be routed back
-	// via the same path.
-	rpc.Header.ProxyRecord = append(rpc.Header.ProxyRecord, p.id)
 
 	destination := rpc.Header.Destination
 
-	// If there is a proxy route we're following, use that as the destination
-	// address in preference to the one marked in the header.
-	if rpc.Header.ProxyNext != nil {
-		destination = rpc.Header.ProxyNext[len(rpc.Header.ProxyNext)-1]
-		rpc.Header.ProxyNext = rpc.Header.ProxyNext[0 : len(rpc.Header.ProxyNext)-1]
-	}
+	// XXX: this proxy stuff might be of no value -- consider removing it or at least
+	// making it optional.
+	if true {
+		// Mark the proxy route this RPC is taking so responses can be routed back
+		// via the same path.
+		rpc.Header.ProxyRecord = append(rpc.Header.ProxyRecord, p.id)
 
-	// TODO: allow a callback function to implement routing policy: decide if
-	// we're allowed to send a packet between these two ids.
+		// If there is a proxy route we're following, use that as the destination
+		// address in preference to the one marked in the header.
+		if rpc.Header.ProxyNext != nil {
+			destination = rpc.Header.ProxyNext[len(rpc.Header.ProxyNext)-1]
+			rpc.Header.ProxyNext = rpc.Header.ProxyNext[0 : len(rpc.Header.ProxyNext)-1]
+		}
+	}
 
 	// Now try and forward to the destination we've decided on.
 	p.mutex.Lock()

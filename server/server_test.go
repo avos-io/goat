@@ -18,13 +18,13 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	new := NewServer()
+	new := NewServer("s0")
 	defer new.Stop()
 	require.NotNil(t, new)
 }
 
 func TestStop(t *testing.T) {
-	srv := NewServer()
+	srv := NewServer("s0")
 
 	conn := testutil.NewTestConn()
 
@@ -42,7 +42,7 @@ func TestUnary(t *testing.T) {
 	t.Run("We can receive a unary RPC and send out its reply", func(t *testing.T) {
 		is := require.New(t)
 
-		srv := NewServer()
+		srv := NewServer("s0")
 		defer srv.Stop()
 
 		id := uint64(99)
@@ -65,7 +65,7 @@ func TestUnary(t *testing.T) {
 			srv.Serve(conn)
 		}()
 
-		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent), Err: nil}
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
 
 		select {
 		case w := <-conn.WriteChan:
@@ -82,7 +82,7 @@ func TestUnary(t *testing.T) {
 	t.Run("If the unary handler returns an error, we wrap that up", func(t *testing.T) {
 		is := require.New(t)
 
-		srv := NewServer()
+		srv := NewServer("s0")
 		defer srv.Stop()
 
 		id := uint64(1)
@@ -104,7 +104,7 @@ func TestUnary(t *testing.T) {
 			srv.Serve(conn)
 		}()
 
-		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent), Err: nil}
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
 
 		select {
 		case w := <-conn.WriteChan:
@@ -122,7 +122,7 @@ func TestServerStream(t *testing.T) {
 	t.Run("We can fulfill a server stream request", func(t *testing.T) {
 		is := require.New(t)
 
-		srv := NewServer()
+		srv := NewServer("s0")
 		defer srv.Stop()
 
 		id := uint64(99)
@@ -159,21 +159,25 @@ func TestServerStream(t *testing.T) {
 			Rpc: &wrapped.Rpc{
 				Id: id,
 				Header: &wrapped.RequestHeader{
-					Method: method,
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
 				},
 			},
 			Err: nil,
 		}
 
 		// SendMsg
-		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent), Err: nil}
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
 
 		// CloseSend
 		conn.ReadChan <- testutil.ReadReturn{
 			Rpc: &wrapped.Rpc{
 				Id: id,
 				Header: &wrapped.RequestHeader{
-					Method: method,
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
 				},
 				Status: &wrapped.ResponseStatus{
 					Code:    int32(codes.OK),
@@ -272,7 +276,7 @@ func waitTimeout(t *testing.T, on chan struct{}) {
 	}
 }
 
-func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg) *wrapped.Rpc {
+func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg, src, dst string) *wrapped.Rpc {
 	codec := encoding.GetCodec(proto.Name)
 
 	body, err := codec.Marshal(msg)
@@ -283,7 +287,9 @@ func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg) *wrapped.Rpc {
 	rpc := &wrapped.Rpc{
 		Id: id,
 		Header: &wrapped.RequestHeader{
-			Method: fullMethod,
+			Method:      fullMethod,
+			Source:      src,
+			Destination: dst,
 		},
 		Body: &wrapped.Body{Data: body},
 	}

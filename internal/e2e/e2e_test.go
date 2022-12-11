@@ -292,6 +292,7 @@ func TestRealProxy(t *testing.T) {
 	const (
 		proxyAddress     = "cloud:1"
 		serverAddress    = "cloud:2"
+		serviceName      = "service:sam-was-here"
 		clientAddressFmt = "client:%x"
 	)
 
@@ -312,7 +313,12 @@ func TestRealProxy(t *testing.T) {
 
 			return nil, fmt.Errorf("invalid ID to connect to")
 		},
-		nil,
+		func(hdr *wrapped.RequestHeader) error {
+			if hdr.Destination == serviceName {
+				hdr.Destination = serverAddress
+			}
+			return nil
+		},
 		nil)
 
 	go proxy.Serve()
@@ -323,7 +329,7 @@ func TestRealProxy(t *testing.T) {
 	proxy.AddClient(cl1Address, e2e.NewGoatOverPipe(ps2))
 
 	simClient := newSimulatedClient(e2e.NewGoatOverPipe(ps1))
-	tpClient := testproto.NewTestServiceClient(simClient.newClientConn(cl1Address, serverAddress))
+	tpClient := testproto.NewTestServiceClient(simClient.newClientConn(cl1Address, serviceName))
 
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*2))
 	defer cancel()
