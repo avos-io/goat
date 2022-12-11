@@ -157,7 +157,7 @@ func (cc *ClientConn) newStream(
 		return nil, err
 	}
 
-	return newClientStream(ctx, id, method, rw, teardown), nil
+	return newClientStream(ctx, id, method, rw, teardown, cc.sourceAddress, cc.destAddress), nil
 }
 
 func (cc *ClientConn) asStreamer(

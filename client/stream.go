@@ -27,6 +27,8 @@ type clientStream struct {
 	method string
 	codec  encoding.Codec
 
+	sourceAddress, destAddress string
+
 	ready  sync.WaitGroup
 	header metadata.MD
 
@@ -55,6 +57,7 @@ func newClientStream(
 	method string,
 	rw goat.RpcReadWriter,
 	teardown func(),
+	sourceAddress, destAddress string,
 ) grpc.ClientStream {
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -65,13 +68,15 @@ func newClientStream(
 	}
 
 	cs := &clientStream{
-		ctx:      ctx,
-		id:       id,
-		method:   method,
-		codec:    encoding.GetCodec(proto.Name),
-		rw:       rw,
-		teardown: csteardown,
-		rCh:      make(chan *wrapped.Body),
+		ctx:           ctx,
+		id:            id,
+		method:        method,
+		codec:         encoding.GetCodec(proto.Name),
+		rw:            rw,
+		teardown:      csteardown,
+		rCh:           make(chan *wrapped.Body),
+		sourceAddress: sourceAddress,
+		destAddress:   destAddress,
 	}
 
 	cs.ready.Add(1)
@@ -116,7 +121,9 @@ func (cs *clientStream) CloseSend() error {
 	tr := wrapped.Rpc{
 		Id: cs.id,
 		Header: &wrapped.RequestHeader{
-			Method: cs.method,
+			Method:      cs.method,
+			Source:      cs.sourceAddress,
+			Destination: cs.destAddress,
 		},
 		Status: &wrapped.ResponseStatus{
 			Code:    int32(codes.OK),
@@ -164,7 +171,9 @@ func (cs *clientStream) SendMsg(m interface{}) error {
 	rpc := wrapped.Rpc{
 		Id: cs.id,
 		Header: &wrapped.RequestHeader{
-			Method: cs.method,
+			Method:      cs.method,
+			Source:      cs.sourceAddress,
+			Destination: cs.destAddress,
 		},
 		Body: &wrapped.Body{
 			Data: body,

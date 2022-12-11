@@ -782,7 +782,7 @@ func setupOpts(
 		}
 	}()
 
-	server := server.NewServer(serverOpts...)
+	server := server.NewServer("server0", serverOpts...)
 	testproto.RegisterTestServiceServer(server, s)
 
 	go func() {
@@ -790,7 +790,7 @@ func setupOpts(
 	}()
 
 	client := testproto.NewTestServiceClient(
-		client.NewClientConn(clientConn, "src", "dst", clientOpts...),
+		client.NewClientConn(clientConn, "src", "server0", clientOpts...),
 	)
 
 	teardown := func() {

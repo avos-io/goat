@@ -50,10 +50,11 @@ func StreamInterceptor(i grpc.StreamServerInterceptor) ServerOption {
 	})
 }
 
-func NewServer(opts ...ServerOption) *Server {
+func NewServer(id string, opts ...ServerOption) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	srv := Server{
+		id:       id,
 		ctx:      ctx,
 		cancel:   cancel,
 		services: make(map[string]*serviceInfo),
@@ -77,6 +78,7 @@ type serviceInfo struct {
 type Server struct {
 	ctx    context.Context
 	cancel context.CancelFunc
+	id     string
 
 	services map[string]*serviceInfo // service name -> service info
 
@@ -167,6 +169,11 @@ func (h *handler) serve() error {
 			return err
 		}
 
+		if rpc.GetHeader().Destination != h.srv.id {
+			log.Error().Msgf("Server: invalidation destination id %s", rpc.GetHeader().Destination)
+			continue
+		}
+
 		si, known := h.srv.services[service]
 		if !known {
 			log.Error().Msgf("Server: unknown service, %s", service)
@@ -174,7 +181,6 @@ func (h *handler) serve() error {
 		}
 		if md, ok := si.methods[method]; ok {
 			resp := h.processUnaryRpc(si, md, rpc)
-			// Source,dest addresses
 			h.rw.Write(h.ctx, resp)
 			continue
 		}
@@ -217,8 +223,6 @@ func (h *handler) processUnaryRpc(
 	}
 
 	resp, appErr := md.Handler(info.serviceImpl, ctx, dec, h.srv.unaryInterceptor)
-
-	// TODO: validate dest address really is us
 
 	respH := internal.ToKeyValue(sts.GetHeaders())
 	respHeader := &wrapped.RequestHeader{

@@ -25,8 +25,8 @@ type simulatedServer struct {
 	srv *server.Server
 }
 
-func newSimulatedServer(transport goat.RpcReadWriter) *simulatedServer {
-	srv := server.NewServer()
+func newSimulatedServer(id string, transport goat.RpcReadWriter) *simulatedServer {
+	srv := server.NewServer(id)
 
 	go func() {
 		err := srv.Serve(transport)
@@ -182,7 +182,7 @@ func TestGoatOverPipesSingleClientSingleServer(t *testing.T) {
 	// And between Client and Proxy
 	ps3, ps4 := net.Pipe()
 
-	simServer := newSimulatedServer(e2e.NewGoatOverPipe(ps1))
+	simServer := newSimulatedServer("s:1", e2e.NewGoatOverPipe(ps1))
 	echoServer := &echoServer{}
 	testproto.RegisterTestServiceServer(simServer.srv, echoServer)
 
@@ -190,7 +190,7 @@ func TestGoatOverPipesSingleClientSingleServer(t *testing.T) {
 
 	simClient := newSimulatedClient(e2e.NewGoatOverPipe(ps4))
 
-	tpClient := testproto.NewTestServiceClient(simClient.newClientConn("src", "dst"))
+	tpClient := testproto.NewTestServiceClient(simClient.newClientConn("src", "s:1"))
 	result, err := tpClient.Unary(context.Background(), &testproto.Msg{Value: 11})
 	if err != nil {
 		panic(err)
@@ -203,7 +203,7 @@ func TestGoatOverPipesManyClientsSingleServer(t *testing.T) {
 	// Make a pipe for communication between Proxy and Server
 	ps1, ps2 := net.Pipe()
 
-	simServer := newSimulatedServer(e2e.NewGoatOverPipe(ps1))
+	simServer := newSimulatedServer("server0", e2e.NewGoatOverPipe(ps1))
 	echoServer := &echoServer{}
 	testproto.RegisterTestServiceServer(simServer.srv, echoServer)
 
@@ -240,7 +240,7 @@ func TestGoatOverPipesManyClientsSingleServer(t *testing.T) {
 func TestGoatOverWebsocketsSingleClientSingleServer(t *testing.T) {
 	ps1, ps2 := net.Pipe()
 
-	simServer := newSimulatedServer(e2e.NewGoatOverPipe(ps1))
+	simServer := newSimulatedServer("s:1", e2e.NewGoatOverPipe(ps1))
 	echoServer := &echoServer{}
 	testproto.RegisterTestServiceServer(simServer.srv, echoServer)
 
@@ -279,7 +279,7 @@ func TestGoatOverWebsocketsSingleClientSingleServer(t *testing.T) {
 
 	simClient := newSimulatedClient(e2e.NewGoatOverWebsocket(conn))
 
-	tpClient := testproto.NewTestServiceClient(simClient.newClientConn("badf00d", "server0"))
+	tpClient := testproto.NewTestServiceClient(simClient.newClientConn("badf00d", "s:1"))
 	result, err := tpClient.Unary(context.Background(), &testproto.Msg{Value: 11})
 	if err != nil {
 		panic(err)
@@ -295,7 +295,7 @@ func TestRealProxy(t *testing.T) {
 		clientAddressFmt = "client:%x"
 	)
 
-	srv := server.NewServer()
+	srv := server.NewServer(serverAddress)
 	echoServer := &echoServer{}
 	testproto.RegisterTestServiceServer(srv, echoServer)
 
