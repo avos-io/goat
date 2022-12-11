@@ -226,7 +226,9 @@ func (h *handler) processUnaryRpc(
 		Headers:     respH,
 		Source:      rpc.Header.Destination,
 		Destination: rpc.Header.Source,
-		ProxyNext:   rpc.Header.ProxyRecord[0 : len(rpc.Header.ProxyRecord)-1],
+	}
+	if len(rpc.Header.ProxyRecord) > 1 {
+		respHeader.ProxyNext = rpc.Header.ProxyRecord[0 : len(rpc.Header.ProxyRecord)-1]
 	}
 	respTrailer := &wrapped.Trailer{
 		Metadata: internal.ToKeyValue(sts.GetTrailers()),
