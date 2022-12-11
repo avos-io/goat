@@ -122,8 +122,7 @@ func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 
 func (s *Server) Serve(rw goat.RpcReadWriter) error {
 	h := newHandler(s.ctx, s, rw)
-	h.serve()
-	return nil
+	return h.serve()
 }
 
 // handler for a specific goat.RpcReadWriter
