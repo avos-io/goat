@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/avos-io/goat"
 	"github.com/avos-io/goat/client"
 	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/gen/testproto"
@@ -84,9 +85,8 @@ type simulatedServer struct {
 	srv *server.Server
 }
 
-func newSimulatedServer(c net.Conn) *simulatedServer {
+func newSimulatedServer(transport goat.RpcReadWriter) *simulatedServer {
 	srv := server.NewServer()
-	transport := newGoatOverPipe(c)
 
 	go func() {
 		err := srv.Serve(transport)
@@ -97,13 +97,10 @@ func newSimulatedServer(c net.Conn) *simulatedServer {
 }
 
 type simulatedProxy struct {
-	t1, t2 *goatOverPipe
+	t1, t2 goat.RpcReadWriter
 }
 
-func newSimulatedProxy(c1, c2 net.Conn) *simulatedProxy {
-	t1 := newGoatOverPipe(c1)
-	t2 := newGoatOverPipe(c2)
-
+func newSimulatedProxy(t1, t2 goat.RpcReadWriter) *simulatedProxy {
 	proxy := &simulatedProxy{t1, t2}
 
 	go proxy.forward(t1, t2)
@@ -112,7 +109,7 @@ func newSimulatedProxy(c1, c2 net.Conn) *simulatedProxy {
 	return proxy
 }
 
-func (p *simulatedProxy) forward(from, to *goatOverPipe) {
+func (p *simulatedProxy) forward(from, to goat.RpcReadWriter) {
 	ctx := context.Background()
 
 	for {
@@ -129,11 +126,10 @@ func (p *simulatedProxy) forward(from, to *goatOverPipe) {
 }
 
 type simulatedClient struct {
-	transport *goatOverPipe
+	transport goat.RpcReadWriter
 }
 
-func newSimulatedClient(c net.Conn) *simulatedClient {
-	transport := newGoatOverPipe(c)
+func newSimulatedClient(transport goat.RpcReadWriter) *simulatedClient {
 	return &simulatedClient{transport}
 }
 
@@ -155,14 +151,15 @@ func TestSam(t *testing.T) {
 	// And between Client and Proxy
 	ps3, ps4 := net.Pipe()
 
-	simServer := newSimulatedServer(ps1)
+	simServer := newSimulatedServer(newGoatOverPipe(ps1))
+
 	echoServer := &echoServer{}
 
 	testproto.RegisterTestServiceServer(simServer.srv, echoServer)
 
-	_ = newSimulatedProxy(ps2, ps3)
+	_ = newSimulatedProxy(newGoatOverPipe(ps2), newGoatOverPipe(ps3))
 
-	simClient := newSimulatedClient(ps4)
+	simClient := newSimulatedClient(newGoatOverPipe(ps4))
 
 	tpClient := testproto.NewTestServiceClient(simClient.newClientConn())
 	result, err := tpClient.Unary(context.Background(), &testproto.Msg{Value: 11})
