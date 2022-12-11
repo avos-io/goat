@@ -1,4 +1,4 @@
-package sam
+package e2e
 
 // An end to end test of the following topology:
 //

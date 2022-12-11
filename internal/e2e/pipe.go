@@ -1,4 +1,4 @@
-package sam
+package e2e
 
 import (
 	"context"
