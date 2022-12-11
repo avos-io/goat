@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"sync"
 	"testing"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/avos-io/goat/server"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"nhooyr.io/websocket"
 )
 
 type simulatedServer struct {
@@ -231,4 +233,56 @@ func TestGoatOverPipesManyClientsSingleServer(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+// Websocket between Client and Proxy, pipe betwene Proxy and Server
+func TestGoatOverWebsocketsSingleClientSingleServer(t *testing.T) {
+	ps1, ps2 := net.Pipe()
+
+	simServer := newSimulatedServer(e2e.NewGoatOverPipe(ps1))
+	echoServer := &echoServer{}
+	testproto.RegisterTestServiceServer(simServer.srv, echoServer)
+
+	proxy := newManyToOneProxy(e2e.NewGoatOverPipe(ps2))
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			panic(err)
+		}
+
+		clientAddress := "badf00d"
+		proxy.AddClient(clientAddress, e2e.NewGoatOverWebsocket(c))
+
+		// Something should take ownership of closing the connection; we don't do that
+		// yet in these tests.
+		//c.Close(websocket.StatusNormalClosure, "")
+	})
+
+	listener, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+
+	go func() {
+		err = http.Serve(listener, handler)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	conn, _, err := websocket.Dial(context.Background(), fmt.Sprintf("ws://%s", listener.Addr().String()), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	simClient := newSimulatedClient(e2e.NewGoatOverWebsocket(conn))
+
+	tpClient := testproto.NewTestServiceClient(simClient.newClientConn("badf00d", "server0"))
+	result, err := tpClient.Unary(context.Background(), &testproto.Msg{Value: 11})
+	if err != nil {
+		panic(err)
+	}
+
+	require.Equal(t, int32(11), result.Value)
 }
