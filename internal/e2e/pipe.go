@@ -17,7 +17,7 @@ type goatOverPipe struct {
 	writeMutex sync.Mutex
 }
 
-func newGoatOverPipe(c net.Conn) *goatOverPipe {
+func NewGoatOverPipe(c net.Conn) *goatOverPipe {
 	return &goatOverPipe{conn: c}
 }
 

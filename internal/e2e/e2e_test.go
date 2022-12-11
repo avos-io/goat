@@ -1,8 +1,4 @@
-package e2e
-
-// An end to end test of the following topology:
-//
-// [Client] <-> [Proxy] <-> [Server]
+package e2e_test
 
 import (
 	"context"
@@ -12,6 +8,7 @@ import (
 	"github.com/avos-io/goat"
 	"github.com/avos-io/goat/client"
 	"github.com/avos-io/goat/gen/testproto"
+	"github.com/avos-io/goat/internal/e2e"
 	"github.com/avos-io/goat/server"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -81,21 +78,25 @@ func (*echoServer) Unary(_ context.Context, m *testproto.Msg) (*testproto.Msg, e
 	return m, nil
 }
 
+// An end to end test of the following topology:
+//
+// [Client] <-> [Proxy] <-> [Server]
+
 func TestGoatOverPipes(t *testing.T) {
 	// Make a pipe for communication between Proxy and Server
 	ps1, ps2 := net.Pipe()
 	// And between Client and Proxy
 	ps3, ps4 := net.Pipe()
 
-	simServer := newSimulatedServer(newGoatOverPipe(ps1))
+	simServer := newSimulatedServer(e2e.NewGoatOverPipe(ps1))
 
 	echoServer := &echoServer{}
 
 	testproto.RegisterTestServiceServer(simServer.srv, echoServer)
 
-	_ = newSimulatedProxy(newGoatOverPipe(ps2), newGoatOverPipe(ps3))
+	_ = newSimulatedProxy(e2e.NewGoatOverPipe(ps2), e2e.NewGoatOverPipe(ps3))
 
-	simClient := newSimulatedClient(newGoatOverPipe(ps4))
+	simClient := newSimulatedClient(e2e.NewGoatOverPipe(ps4))
 
 	tpClient := testproto.NewTestServiceClient(simClient.newClientConn())
 	result, err := tpClient.Unary(context.Background(), &testproto.Msg{Value: 11})
