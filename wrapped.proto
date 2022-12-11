@@ -20,6 +20,9 @@ message Rpc {
 message RequestHeader {
     string method = 1;
     repeated KeyValue headers = 2;
+    string source = 3;
+    string destination = 4;
+    // repeated string proxy = 5;
 }
 
 // Based on https://cloud.google.com/apis/design/errors

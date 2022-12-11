@@ -174,6 +174,7 @@ func (h *handler) serve() error {
 		}
 		if md, ok := si.methods[method]; ok {
 			resp := h.processUnaryRpc(si, md, rpc)
+			// Source,dest addresses
 			h.rw.Write(h.ctx, resp)
 			continue
 		}
@@ -219,8 +220,10 @@ func (h *handler) processUnaryRpc(
 
 	respH := internal.ToKeyValue(sts.GetHeaders())
 	respHeader := &wrapped.RequestHeader{
-		Method:  fullMethod,
-		Headers: respH,
+		Method:      fullMethod,
+		Headers:     respH,
+		Source:      rpc.Header.Destination,
+		Destination: rpc.Header.Source,
 	}
 	respTrailer := &wrapped.Trailer{
 		Metadata: internal.ToKeyValue(sts.GetTrailers()),
