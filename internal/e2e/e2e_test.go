@@ -290,10 +290,10 @@ func TestGoatOverWebsocketsSingleClientSingleServer(t *testing.T) {
 
 func TestRealProxy(t *testing.T) {
 	const (
-		proxyAddress     = "cloud:1"
-		serverAddress    = "cloud:2"
-		serviceName      = "service:sam-was-here"
-		clientAddressFmt = "client:%x"
+		proxyAddress  = "cloud:1"
+		serverAddress = "cloud:2"
+		serviceName   = "service:sam-was-here"
+		clientAddress = "client:1"
 	)
 
 	srv := server.NewServer(serverAddress)
@@ -315,6 +315,10 @@ func TestRealProxy(t *testing.T) {
 		},
 		func(hdr *wrapped.RequestHeader) error {
 			if hdr.Destination == serviceName {
+				// It would be reasonable to look up client metadata like org at this
+				// point. Assuming we save such on client connection, then it could
+				// simply be a map lookup based on hdr.Source. Alternatively, it's
+				// a case of looking through hdr.Headers.
 				hdr.Destination = serverAddress
 			}
 			return nil
@@ -324,12 +328,11 @@ func TestRealProxy(t *testing.T) {
 	go proxy.Serve()
 
 	ps1, ps2 := net.Pipe()
-	cl1Address := fmt.Sprintf(clientAddressFmt, 1)
 
-	proxy.AddClient(cl1Address, e2e.NewGoatOverPipe(ps2))
+	proxy.AddClient(clientAddress, e2e.NewGoatOverPipe(ps2))
 
 	simClient := newSimulatedClient(e2e.NewGoatOverPipe(ps1))
-	tpClient := testproto.NewTestServiceClient(simClient.newClientConn(cl1Address, serviceName))
+	tpClient := testproto.NewTestServiceClient(simClient.newClientConn(clientAddress, serviceName))
 
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*2))
 	defer cancel()

@@ -127,6 +127,12 @@ func (s *Server) Serve(rw goat.RpcReadWriter) error {
 	return h.serve()
 }
 
+type unaryRpcArgs struct {
+	info *serviceInfo
+	md   *grpc.MethodDesc
+	rpc  *wrapped.Rpc
+}
+
 // handler for a specific goat.RpcReadWriter
 type handler struct {
 	ctx context.Context
@@ -138,19 +144,56 @@ type handler struct {
 
 	mu      sync.Mutex // protects streams
 	streams map[uint64]chan *wrapped.Rpc
+
+	writeChan    chan *wrapped.Rpc
+	unaryRpcChan chan unaryRpcArgs
 }
 
 func newHandler(ctx context.Context, srv *Server, rw goat.RpcReadWriter) *handler {
 	return &handler{
-		ctx:     ctx,
-		srv:     srv,
-		rw:      rw,
-		codec:   encoding.GetCodec(proto.Name),
-		streams: map[uint64]chan *wrapped.Rpc{},
+		ctx:          ctx,
+		srv:          srv,
+		rw:           rw,
+		codec:        encoding.GetCodec(proto.Name),
+		streams:      map[uint64]chan *wrapped.Rpc{},
+		writeChan:    make(chan *wrapped.Rpc),
+		unaryRpcChan: make(chan unaryRpcArgs),
 	}
 }
 
 func (h *handler) serve() error {
+	writeCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		for {
+			select {
+			case rpc := <-h.writeChan:
+				h.rw.Write(writeCtx, rpc)
+			case <-writeCtx.Done():
+				return
+			}
+		}
+	}()
+
+	unaryRpcCtx, unaryRpcCtxCancel := context.WithCancel(context.Background())
+	defer unaryRpcCtxCancel()
+
+	const numRpcWorkers = 8
+
+	for i := 0; i < numRpcWorkers; i++ {
+		go func() {
+			for {
+				select {
+				case args := <-h.unaryRpcChan:
+					h.writeChan <- h.processUnaryRpc(args.info, args.md, args.rpc)
+				case <-unaryRpcCtx.Done():
+					return
+				}
+			}
+		}()
+	}
+
 	for {
 		rpc, err := h.rw.Read(h.ctx)
 		if err != nil {
@@ -180,8 +223,7 @@ func (h *handler) serve() error {
 			continue
 		}
 		if md, ok := si.methods[method]; ok {
-			resp := h.processUnaryRpc(si, md, rpc)
-			h.rw.Write(h.ctx, resp)
+			h.unaryRpcChan <- unaryRpcArgs{si, md, rpc}
 			continue
 		}
 		if sd, ok := si.streams[method]; ok {
@@ -323,7 +365,10 @@ func (h *handler) runStream(
 			return nil, ctx.Err()
 		}
 	}
-	rw := internal.NewFnReadWriter(r, h.rw.Write)
+	rw := internal.NewFnReadWriter(r, func(ctx context.Context, r *wrapped.Rpc) error {
+		h.writeChan <- r
+		return nil
+	})
 
 	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
 	if err != nil {
