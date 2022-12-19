@@ -1,6 +1,7 @@
-package server
+package goat
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 	"github.com/avos-io/goat/gen/testproto/mocks"
 	"github.com/avos-io/goat/internal/testutil"
 )
+
+var errTest = errors.New("TEST ERROR (EXPECTED)")
 
 func TestNew(t *testing.T) {
 	new := NewServer("s0")

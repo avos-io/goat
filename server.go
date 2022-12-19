@@ -1,4 +1,4 @@
-package server
+package goat
 
 import (
 	"context"
@@ -17,9 +17,9 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/avos-io/goat"
 	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/internal"
+	"github.com/avos-io/goat/internal/server"
 )
 
 // ServerOption is an option used when constructing a NewServer.
@@ -122,7 +122,7 @@ func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 	s.services[sd.ServiceName] = info
 }
 
-func (s *Server) Serve(rw goat.RpcReadWriter) error {
+func (s *Server) Serve(rw RpcReadWriter) error {
 	h := newHandler(s.ctx, s, rw)
 	return h.serve()
 }
@@ -139,7 +139,7 @@ type handler struct {
 
 	srv *Server
 
-	rw    goat.RpcReadWriter
+	rw    RpcReadWriter
 	codec encoding.Codec
 
 	mu      sync.Mutex // protects streams
@@ -149,7 +149,7 @@ type handler struct {
 	unaryRpcChan chan unaryRpcArgs
 }
 
-func newHandler(ctx context.Context, srv *Server, rw goat.RpcReadWriter) *handler {
+func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
 	return &handler{
 		ctx:          ctx,
 		srv:          srv,
@@ -248,7 +248,7 @@ func (h *handler) processUnaryRpc(
 	defer cancel()
 
 	fullMethod := fmt.Sprintf("%s/%s", info.name, md.MethodName)
-	sts := newUnaryServerTransportStream(fullMethod)
+	sts := server.NewUnaryServerTransportStream(fullMethod)
 	ctx = grpc.NewContextWithServerTransportStream(ctx, sts)
 
 	body := rpc.GetBody()
@@ -382,13 +382,13 @@ func (h *handler) runStream(
 		IsServerStream: sd.ServerStreams,
 	}
 
-	stream, err := newServerStream(ctx, streamId, si.FullMethod, rw)
+	stream, err := server.NewServerStream(ctx, streamId, si.FullMethod, rw)
 	if err != nil {
 		log.Error().Err(err).Msg("Server: newServerStream failed")
 		return err
 	}
 
-	sts := newServerTransportStream(si.FullMethod, stream)
+	sts := server.NewServerTransportStream(si.FullMethod, stream)
 	stream.SetContext(grpc.NewContextWithServerTransportStream(ctx, sts))
 
 	var appErr error

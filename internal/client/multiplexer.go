@@ -11,14 +11,14 @@ import (
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/status"
 
-	"github.com/avos-io/goat"
 	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/internal"
+	"github.com/avos-io/goat/types"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
 )
 
 type RpcMultiplexer struct {
-	rw       goat.RpcReadWriter
+	rw       types.RpcReadWriter
 	handlers map[uint64]chan *wrapped.Rpc
 
 	ctx    context.Context
@@ -30,7 +30,7 @@ type RpcMultiplexer struct {
 	codec encoding.Codec
 }
 
-func NewRpcMultiplexer(rw goat.RpcReadWriter) *RpcMultiplexer {
+func NewRpcMultiplexer(rw types.RpcReadWriter) *RpcMultiplexer {
 	rm := &RpcMultiplexer{
 		rw:       rw,
 		handlers: make(map[uint64]chan *wrapped.Rpc),
@@ -95,7 +95,7 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 // close the stream.
 func (rm *RpcMultiplexer) NewStreamReadWriter(
 	ctx context.Context,
-) (uint64, goat.RpcReadWriter, func()) {
+) (uint64, types.RpcReadWriter, func()) {
 	streamId := atomic.AddUint64(&rm.streamCounter, 1)
 
 	respChan := make(chan *wrapped.Rpc, 1)

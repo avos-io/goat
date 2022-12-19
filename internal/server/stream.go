@@ -15,9 +15,9 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/avos-io/goat"
 	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/internal"
+	"github.com/avos-io/goat/types"
 )
 
 type serverStream struct {
@@ -27,7 +27,7 @@ type serverStream struct {
 
 	codec encoding.Codec
 
-	rw goat.RpcReadWriter
+	rw types.RpcReadWriter
 
 	protected struct {
 		sync.Mutex
@@ -41,11 +41,11 @@ type serverStream struct {
 
 var _ grpc.ServerStream = (*serverStream)(nil)
 
-func newServerStream(
+func NewServerStream(
 	ctx context.Context,
 	id uint64,
 	method string,
-	rw goat.RpcReadWriter,
+	rw types.RpcReadWriter,
 ) (*serverStream, error) {
 	return &serverStream{
 		ctx:    ctx,

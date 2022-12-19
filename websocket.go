@@ -1,10 +1,9 @@
-package e2e
+package goat
 
 import (
 	"context"
 	"errors"
 
-	"github.com/avos-io/goat"
 	wrapped "github.com/avos-io/goat/gen"
 	"google.golang.org/protobuf/proto"
 	"nhooyr.io/websocket"
@@ -16,7 +15,7 @@ type goatOverWebsocket struct {
 	conn *websocket.Conn
 }
 
-func NewGoatOverWebsocket(ws *websocket.Conn) goat.RpcReadWriter {
+func NewGoatOverWebsocket(ws *websocket.Conn) RpcReadWriter {
 	return &goatOverWebsocket{ws}
 }
 

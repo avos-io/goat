@@ -1,18 +1,17 @@
-package e2e
+package goat
 
 import (
 	"context"
 	"log"
 	"sync"
 
-	"github.com/avos-io/goat"
 	wrapped "github.com/avos-io/goat/gen"
 )
 
 // Is free to modify the passed in header, e.g. changing the Destination.
 // If an error is returned, the RPC is dropped.
 type RpcIntercepter func(hdr *wrapped.RequestHeader) error
-type NewConnection func(id string) (goat.RpcReadWriter, error)
+type NewConnection func(id string) (RpcReadWriter, error)
 type ClientDisconnect func(id string, reason error)
 
 type proxy struct {
@@ -34,7 +33,7 @@ type command struct {
 
 type proxyClient struct {
 	id         string
-	conn       goat.RpcReadWriter
+	conn       RpcReadWriter
 	toServer   chan command
 	fromServer chan *wrapped.Rpc
 }
@@ -55,7 +54,7 @@ func NewProxy(
 	}
 }
 
-func (p *proxy) AddClient(id string, conn goat.RpcReadWriter) {
+func (p *proxy) AddClient(id string, conn RpcReadWriter) {
 	client := &proxyClient{
 		id:         id,
 		conn:       conn,

@@ -1,7 +1,8 @@
-package client
+package client_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -16,7 +17,10 @@ import (
 	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/gen/mocks"
 	"github.com/avos-io/goat/gen/testproto"
+	"github.com/avos-io/goat/internal/client"
 )
+
+var errTest = errors.New("TEST ERROR (EXPECTED)")
 
 type testConn struct {
 	mock.Mock
@@ -64,7 +68,7 @@ func makeErrorResponse(id uint64, status *wrapped.ResponseStatus) *wrapped.Rpc {
 func TestUnaryMethodSuccess(t *testing.T) {
 	tc := &testConn{}
 
-	rm := NewRpcMultiplexer(tc)
+	rm := client.NewRpcMultiplexer(tc)
 	defer rm.Close()
 
 	readChan := make(chan readReturn)
@@ -95,7 +99,7 @@ func TestUnaryMethodSuccess(t *testing.T) {
 func TestUnaryMethodFailure(t *testing.T) {
 	tc := &testConn{}
 
-	rm := NewRpcMultiplexer(tc)
+	rm := client.NewRpcMultiplexer(tc)
 	defer rm.Close()
 
 	readChan := make(chan readReturn)
@@ -137,7 +141,7 @@ func TestNewStreamReadWriter(t *testing.T) {
 		unblockRead := make(chan time.Time)
 		rw.EXPECT().Read(mock.Anything).WaitUntil(unblockRead).Return(nil, errTest)
 
-		rm := NewRpcMultiplexer(rw)
+		rm := client.NewRpcMultiplexer(rw)
 		defer rm.Close()
 
 		id, srw, teardown := rm.NewStreamReadWriter(context.Background())
@@ -165,7 +169,7 @@ func TestNewStreamReadWriter(t *testing.T) {
 
 		tc := &testConn{}
 
-		rm := NewRpcMultiplexer(tc)
+		rm := client.NewRpcMultiplexer(tc)
 		defer rm.Close()
 
 		readChan := make(chan readReturn)
@@ -196,7 +200,7 @@ func TestNewStreamReadWriter(t *testing.T) {
 
 		tc := &testConn{}
 
-		rm := NewRpcMultiplexer(tc)
+		rm := client.NewRpcMultiplexer(tc)
 		defer rm.Close()
 
 		readChan := make(chan readReturn)
@@ -230,7 +234,7 @@ func TestNewStreamReadWriter(t *testing.T) {
 
 		tc := &testConn{}
 
-		rm := NewRpcMultiplexer(tc)
+		rm := client.NewRpcMultiplexer(tc)
 		defer rm.Close()
 
 		readChan := make(chan readReturn)
@@ -264,7 +268,7 @@ func TestNewStreamReadWriter(t *testing.T) {
 
 		tc := &testConn{}
 
-		rm := NewRpcMultiplexer(tc)
+		rm := client.NewRpcMultiplexer(tc)
 		defer rm.Close()
 
 		readChan := make(chan readReturn)
