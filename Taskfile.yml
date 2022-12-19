@@ -22,6 +22,12 @@ tasks:
     cmds:
       - go test {{.FLAGS}} ./...
 
+  build:
+    deps: [gen]
+    desc: Build
+    cmds:
+      - go build ./...
+
   clean:
     desc: |
       Remove any build artefacts.

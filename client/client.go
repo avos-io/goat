@@ -23,14 +23,18 @@ type ClientConn struct {
 
 	unaryInterceptor  grpc.UnaryClientInterceptor
 	streamInterceptor grpc.StreamClientInterceptor
+
+	sourceAddress, destAddress string
 }
 
 var _ grpc.ClientConnInterface = (*ClientConn)(nil)
 
-func NewClientConn(conn goat.RpcReadWriter, opts ...DialOption) *ClientConn {
+func NewClientConn(conn goat.RpcReadWriter, source, dest string, opts ...DialOption) *ClientConn {
 	cc := ClientConn{
-		mp:    NewRpcMultiplexer(conn),
-		codec: encoding.GetCodec(proto.Name),
+		mp:            NewRpcMultiplexer(conn),
+		codec:         encoding.GetCodec(proto.Name),
+		sourceAddress: source,
+		destAddress:   dest,
 	}
 
 	for _, opt := range opts {
@@ -78,8 +82,10 @@ func (cc *ClientConn) invoke(
 
 	replyBody, err := cc.mp.CallUnaryMethod(ctx,
 		&wrapped.RequestHeader{
-			Method:  method,
-			Headers: headers,
+			Method:      method,
+			Headers:     headers,
+			Source:      cc.sourceAddress,
+			Destination: cc.destAddress,
 		},
 		&wrapped.Body{
 			Data: body,
@@ -139,8 +145,10 @@ func (cc *ClientConn) newStream(
 	rpc := wrapped.Rpc{
 		Id: id,
 		Header: &wrapped.RequestHeader{
-			Method:  method,
-			Headers: headersFromContext(ctx),
+			Method:      method,
+			Headers:     headersFromContext(ctx),
+			Source:      cc.sourceAddress,
+			Destination: cc.destAddress,
 		},
 	}
 	err := rw.Write(ctx, &rpc)
@@ -149,7 +157,7 @@ func (cc *ClientConn) newStream(
 		return nil, err
 	}
 
-	return newClientStream(ctx, id, method, rw, teardown), nil
+	return newClientStream(ctx, id, method, rw, teardown, cc.sourceAddress, cc.destAddress), nil
 }
 
 func (cc *ClientConn) asStreamer(

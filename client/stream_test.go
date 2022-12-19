@@ -31,7 +31,7 @@ func TestLifecycle(t *testing.T) {
 
 	newClientStream(context.Background(), 0, "", rw, func() {
 		teardownCalled <- struct{}{}
-	})
+	}, "src", "dst")
 
 	select {
 	case <-time.After(1 * time.Second):
@@ -64,7 +64,7 @@ func TestHeader(t *testing.T) {
 			Trailer: &wrapped.Trailer{},
 		}, nil).Once()
 
-		stream := newClientStream(context.Background(), 1, "", rw, func() {})
+		stream := newClientStream(context.Background(), 1, "", rw, func() {}, "src", "dst")
 
 		got, err := stream.Header()
 		is.NoError(err)
@@ -80,7 +80,7 @@ func TestHeader(t *testing.T) {
 		rw := mocks.NewRpcReadWriter(t)
 		rw.EXPECT().Read(mock.Anything).Return(nil, errTest)
 
-		stream := newClientStream(context.Background(), 0, "", rw, func() {})
+		stream := newClientStream(context.Background(), 0, "", rw, func() {}, "src", "dst")
 
 		got, err := stream.Header()
 		is.Error(err)
@@ -107,7 +107,7 @@ func TestTrailer(t *testing.T) {
 			Trailer: sent,
 		}, nil)
 
-		stream := newClientStream(context.Background(), 9, "method", rw, func() {})
+		stream := newClientStream(context.Background(), 9, "method", rw, func() {}, "src", "dst")
 
 		err := stream.RecvMsg(nil)
 		is.Equal(io.EOF, err)
@@ -127,7 +127,7 @@ func TestTrailer(t *testing.T) {
 			Trailer: &wrapped.Trailer{},
 		}, nil)
 
-		stream := newClientStream(context.Background(), 0, "", rw, func() {})
+		stream := newClientStream(context.Background(), 0, "", rw, func() {}, "src", "dst")
 
 		err := stream.RecvMsg(nil)
 		is.Equal(io.EOF, err)
@@ -144,7 +144,7 @@ func TestCloseSend(t *testing.T) {
 		id := uint64(9001)
 		method := "method"
 
-		stream := newClientStream(context.Background(), id, method, rw, func() {})
+		stream := newClientStream(context.Background(), id, method, rw, func() {}, "src", "dst")
 
 		unblockRead := make(chan time.Time)
 		rw.EXPECT().Read(mock.Anything).WaitUntil(unblockRead).Return(nil, errTest).Maybe()
@@ -166,7 +166,7 @@ func TestCloseSend(t *testing.T) {
 		is := require.New(t)
 
 		rw := mocks.NewRpcReadWriter(t)
-		stream := newClientStream(context.Background(), 0, "", rw, func() {})
+		stream := newClientStream(context.Background(), 0, "", rw, func() {}, "src", "dst")
 
 		unblockRead := make(chan time.Time)
 		rw.EXPECT().Read(mock.Anything).WaitUntil(unblockRead).Return(nil, errTest).Maybe()
@@ -180,7 +180,7 @@ func TestContext(t *testing.T) {
 	rw := mocks.NewRpcReadWriter(t)
 	unblockRead := make(chan time.Time)
 	rw.EXPECT().Read(mock.Anything).WaitUntil(unblockRead).Return(nil, errTest).Maybe()
-	stream := newClientStream(context.Background(), 0, "", rw, func() {})
+	stream := newClientStream(context.Background(), 0, "", rw, func() {}, "src", "dst")
 	require.NotNil(t, stream.Context())
 	unblockRead <- time.Now()
 }
@@ -210,7 +210,7 @@ func TestSendMsg(t *testing.T) {
 			},
 		)).Return(nil)
 
-		stream := newClientStream(context.Background(), id, method, rw, func() {})
+		stream := newClientStream(context.Background(), id, method, rw, func() {}, "src", "dst")
 
 		is.NoError(stream.SendMsg(&body))
 		unblockRead <- time.Now()
@@ -226,7 +226,7 @@ func TestSendMsg(t *testing.T) {
 		teardownCalled := false
 		stream := newClientStream(context.Background(), id, method, rw, func() {
 			teardownCalled = true
-		})
+		}, "src", "dst")
 
 		unblockRead := make(chan time.Time)
 		rw.EXPECT().Read(mock.Anything).WaitUntil(unblockRead).Return(nil, errTest).Maybe()
@@ -250,7 +250,7 @@ func TestSendMsg(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
 
-		stream := newClientStream(ctx, id, method, rw, func() {})
+		stream := newClientStream(ctx, id, method, rw, func() {}, "src", "dst")
 
 		// blocks until we get our first response, which will be the err
 		_, _ = stream.Header()
@@ -294,7 +294,7 @@ func TestSendMsg(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
 
-		stream := newClientStream(ctx, id, method, rw, func() {})
+		stream := newClientStream(ctx, id, method, rw, func() {}, "src", "dst")
 
 		// blocks until we get our first response, which will be the err
 		_, _ = stream.Header()
@@ -348,7 +348,7 @@ func TestRecvMsg(t *testing.T) {
 		rw.EXPECT().Read(mock.Anything).Return(rpc, nil).Once()
 		rw.EXPECT().Read(mock.Anything).Return(tr, nil)
 
-		stream := newClientStream(context.Background(), 42, "method", rw, func() {})
+		stream := newClientStream(context.Background(), 42, "method", rw, func() {}, "src", "dst")
 
 		var got testproto.Msg
 		is.NoError(stream.RecvMsg(&got))
@@ -364,7 +364,7 @@ func TestRecvMsg(t *testing.T) {
 		id := uint64(9001)
 		method := "method"
 
-		stream := newClientStream(context.Background(), id, method, rw, func() {})
+		stream := newClientStream(context.Background(), id, method, rw, func() {}, "src", "dst")
 
 		readDone := make(chan struct{})
 		rw.EXPECT().Read(mock.Anything).Return(nil, errTest).Run(
@@ -382,7 +382,7 @@ func TestRecvMsg(t *testing.T) {
 		is := require.New(t)
 
 		rw := mocks.NewRpcReadWriter(t)
-		stream := newClientStream(context.Background(), 42, "method", rw, func() {})
+		stream := newClientStream(context.Background(), 42, "method", rw, func() {}, "src", "dst")
 
 		recvErr := wrapped.Rpc{
 			Id:     42,

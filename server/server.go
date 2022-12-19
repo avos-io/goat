@@ -50,10 +50,11 @@ func StreamInterceptor(i grpc.StreamServerInterceptor) ServerOption {
 	})
 }
 
-func NewServer(opts ...ServerOption) *Server {
+func NewServer(id string, opts ...ServerOption) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	srv := Server{
+		id:       id,
 		ctx:      ctx,
 		cancel:   cancel,
 		services: make(map[string]*serviceInfo),
@@ -77,6 +78,7 @@ type serviceInfo struct {
 type Server struct {
 	ctx    context.Context
 	cancel context.CancelFunc
+	id     string
 
 	services map[string]*serviceInfo // service name -> service info
 
@@ -122,8 +124,13 @@ func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 
 func (s *Server) Serve(rw goat.RpcReadWriter) error {
 	h := newHandler(s.ctx, s, rw)
-	h.serve()
-	return nil
+	return h.serve()
+}
+
+type unaryRpcArgs struct {
+	info *serviceInfo
+	md   *grpc.MethodDesc
+	rpc  *wrapped.Rpc
 }
 
 // handler for a specific goat.RpcReadWriter
@@ -137,19 +144,56 @@ type handler struct {
 
 	mu      sync.Mutex // protects streams
 	streams map[uint64]chan *wrapped.Rpc
+
+	writeChan    chan *wrapped.Rpc
+	unaryRpcChan chan unaryRpcArgs
 }
 
 func newHandler(ctx context.Context, srv *Server, rw goat.RpcReadWriter) *handler {
 	return &handler{
-		ctx:     ctx,
-		srv:     srv,
-		rw:      rw,
-		codec:   encoding.GetCodec(proto.Name),
-		streams: map[uint64]chan *wrapped.Rpc{},
+		ctx:          ctx,
+		srv:          srv,
+		rw:           rw,
+		codec:        encoding.GetCodec(proto.Name),
+		streams:      map[uint64]chan *wrapped.Rpc{},
+		writeChan:    make(chan *wrapped.Rpc),
+		unaryRpcChan: make(chan unaryRpcArgs),
 	}
 }
 
 func (h *handler) serve() error {
+	writeCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		for {
+			select {
+			case rpc := <-h.writeChan:
+				h.rw.Write(writeCtx, rpc)
+			case <-writeCtx.Done():
+				return
+			}
+		}
+	}()
+
+	unaryRpcCtx, unaryRpcCtxCancel := context.WithCancel(context.Background())
+	defer unaryRpcCtxCancel()
+
+	const numRpcWorkers = 8
+
+	for i := 0; i < numRpcWorkers; i++ {
+		go func() {
+			for {
+				select {
+				case args := <-h.unaryRpcChan:
+					h.writeChan <- h.processUnaryRpc(args.info, args.md, args.rpc)
+				case <-unaryRpcCtx.Done():
+					return
+				}
+			}
+		}()
+	}
+
 	for {
 		rpc, err := h.rw.Read(h.ctx)
 		if err != nil {
@@ -168,14 +212,18 @@ func (h *handler) serve() error {
 			return err
 		}
 
+		if rpc.GetHeader().Destination != h.srv.id {
+			log.Error().Msgf("Server: invalidation destination id %s", rpc.GetHeader().Destination)
+			continue
+		}
+
 		si, known := h.srv.services[service]
 		if !known {
 			log.Error().Msgf("Server: unknown service, %s", service)
 			continue
 		}
 		if md, ok := si.methods[method]; ok {
-			resp := h.processUnaryRpc(si, md, rpc)
-			h.rw.Write(h.ctx, resp)
+			h.unaryRpcChan <- unaryRpcArgs{si, md, rpc}
 			continue
 		}
 		if sd, ok := si.streams[method]; ok {
@@ -220,8 +268,13 @@ func (h *handler) processUnaryRpc(
 
 	respH := internal.ToKeyValue(sts.GetHeaders())
 	respHeader := &wrapped.RequestHeader{
-		Method:  fullMethod,
-		Headers: respH,
+		Method:      fullMethod,
+		Headers:     respH,
+		Source:      rpc.Header.Destination,
+		Destination: rpc.Header.Source,
+	}
+	if len(rpc.Header.ProxyRecord) > 1 {
+		respHeader.ProxyNext = rpc.Header.ProxyRecord[0 : len(rpc.Header.ProxyRecord)-1]
 	}
 	respTrailer := &wrapped.Trailer{
 		Metadata: internal.ToKeyValue(sts.GetTrailers()),
@@ -312,7 +365,10 @@ func (h *handler) runStream(
 			return nil, ctx.Err()
 		}
 	}
-	rw := internal.NewFnReadWriter(r, h.rw.Write)
+	rw := internal.NewFnReadWriter(r, func(ctx context.Context, r *wrapped.Rpc) error {
+		h.writeChan <- r
+		return nil
+	})
 
 	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
 	if err != nil {
