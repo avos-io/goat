@@ -1,8 +1,8 @@
-package client
+package goat
 
 import "google.golang.org/grpc"
 
-// DialOption is an option used when constructing a NewWebsocketClientConn.
+// DialOption is an option used when constructing a NewClientConn.
 type DialOption interface {
 	apply(*ClientConn)
 }

@@ -1,4 +1,4 @@
-// package goat_test contains end-to-end tests
+// package contains end-to-end tests
 package goat_test
 
 import (
@@ -14,11 +14,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/avos-io/goat/client"
+	"github.com/avos-io/goat"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/gen/testproto/mocks"
 	"github.com/avos-io/goat/internal/testutil"
-	"github.com/avos-io/goat/server"
 )
 
 var errTest = errors.New("TEST ERROR (EXPECTED)")
@@ -442,11 +441,11 @@ func TestUnaryInterceptor(t *testing.T) {
 
 	client, ctx, teardown := setupOpts(
 		service,
-		[]client.DialOption{
-			client.WithUnaryInterceptor(clientInterceptor),
+		[]goat.DialOption{
+			goat.WithUnaryInterceptor(clientInterceptor),
 		},
-		[]server.ServerOption{
-			server.UnaryInterceptor(serverInterceptor),
+		[]goat.ServerOption{
+			goat.UnaryInterceptor(serverInterceptor),
 		},
 	)
 	defer teardown()
@@ -539,13 +538,13 @@ func TestChainUnaryInterceptor(t *testing.T) {
 
 	client, ctx, teardown := setupOpts(
 		service,
-		[]client.DialOption{
-			client.WithUnaryInterceptor(
+		[]goat.DialOption{
+			goat.WithUnaryInterceptor(
 				grpcMiddleware.ChainUnaryClient(clientInterceptors...),
 			),
 		},
-		[]server.ServerOption{
-			server.UnaryInterceptor(
+		[]goat.ServerOption{
+			goat.UnaryInterceptor(
 				grpcMiddleware.ChainUnaryServer(serverInterceptors...),
 			),
 		},
@@ -618,11 +617,11 @@ func TestStreamInterceptor(t *testing.T) {
 
 	client, ctx, teardown := setupOpts(
 		service,
-		[]client.DialOption{
-			client.WithStreamInterceptor(clientInterceptor),
+		[]goat.DialOption{
+			goat.WithStreamInterceptor(clientInterceptor),
 		},
-		[]server.ServerOption{
-			server.StreamInterceptor(serverInterceptor),
+		[]goat.ServerOption{
+			goat.StreamInterceptor(serverInterceptor),
 		},
 	)
 	defer teardown()
@@ -724,13 +723,13 @@ func TestChainStreamInterceptor(t *testing.T) {
 
 	client, ctx, teardown := setupOpts(
 		service,
-		[]client.DialOption{
-			client.WithStreamInterceptor(
+		[]goat.DialOption{
+			goat.WithStreamInterceptor(
 				grpcMiddleware.ChainStreamClient(clientInterceptors...),
 			),
 		},
-		[]server.ServerOption{
-			server.StreamInterceptor(
+		[]goat.ServerOption{
+			goat.StreamInterceptor(
 				grpcMiddleware.ChainStreamServer(serverInterceptors...),
 			),
 		},
@@ -750,8 +749,8 @@ func setup(s testproto.TestServiceServer) (testproto.TestServiceClient, context.
 
 func setupOpts(
 	s testproto.TestServiceServer,
-	clientOpts []client.DialOption,
-	serverOpts []server.ServerOption,
+	clientOpts []goat.DialOption,
+	serverOpts []goat.ServerOption,
 ) (testproto.TestServiceClient, context.Context, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -782,7 +781,7 @@ func setupOpts(
 		}
 	}()
 
-	server := server.NewServer("server0", serverOpts...)
+	server := goat.NewServer("server0", serverOpts...)
 	testproto.RegisterTestServiceServer(server, s)
 
 	go func() {
@@ -790,7 +789,7 @@ func setupOpts(
 	}()
 
 	client := testproto.NewTestServiceClient(
-		client.NewClientConn(clientConn, "src", "server0", clientOpts...),
+		goat.NewClientConn(clientConn, "src", "server0", clientOpts...),
 	)
 
 	teardown := func() {

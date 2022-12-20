@@ -1,4 +1,4 @@
-package client
+package goat
 
 import (
 	"context"
@@ -7,9 +7,9 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/avos-io/goat"
 	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/internal"
+	"github.com/avos-io/goat/internal/client"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
@@ -17,7 +17,7 @@ import (
 )
 
 type ClientConn struct {
-	mp *RpcMultiplexer
+	mp *client.RpcMultiplexer
 
 	codec encoding.Codec
 
@@ -29,9 +29,9 @@ type ClientConn struct {
 
 var _ grpc.ClientConnInterface = (*ClientConn)(nil)
 
-func NewClientConn(conn goat.RpcReadWriter, source, dest string, opts ...DialOption) *ClientConn {
+func NewClientConn(conn RpcReadWriter, source, dest string, opts ...DialOption) *ClientConn {
 	cc := ClientConn{
-		mp:            NewRpcMultiplexer(conn),
+		mp:            client.NewRpcMultiplexer(conn),
 		codec:         encoding.GetCodec(proto.Name),
 		sourceAddress: source,
 		destAddress:   dest,
@@ -157,7 +157,15 @@ func (cc *ClientConn) newStream(
 		return nil, err
 	}
 
-	return newClientStream(ctx, id, method, rw, teardown, cc.sourceAddress, cc.destAddress), nil
+	return client.NewStream(
+		ctx,
+		id,
+		method,
+		rw,
+		teardown,
+		cc.sourceAddress,
+		cc.destAddress,
+	), nil
 }
 
 func (cc *ClientConn) asStreamer(

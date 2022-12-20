@@ -1,4 +1,4 @@
-package e2e_test
+package goat_test
 
 import (
 	"context"
@@ -11,22 +11,20 @@ import (
 	"time"
 
 	"github.com/avos-io/goat"
-	"github.com/avos-io/goat/client"
 	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/gen/testproto"
-	"github.com/avos-io/goat/internal/e2e"
-	"github.com/avos-io/goat/server"
+	"github.com/avos-io/goat/internal/testutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"nhooyr.io/websocket"
 )
 
 type simulatedServer struct {
-	srv *server.Server
+	srv *goat.Server
 }
 
 func newSimulatedServer(id string, transport goat.RpcReadWriter) *simulatedServer {
-	srv := server.NewServer(id)
+	srv := goat.NewServer(id)
 
 	go func() {
 		err := srv.Serve(transport)
@@ -161,7 +159,7 @@ func newSimulatedClient(transport goat.RpcReadWriter) *simulatedClient {
 }
 
 func (c *simulatedClient) newClientConn(source, dest string) grpc.ClientConnInterface {
-	return client.NewClientConn(c.transport, source, dest)
+	return goat.NewClientConn(c.transport, source, dest)
 }
 
 type echoServer struct {
@@ -182,13 +180,13 @@ func TestGoatOverPipesSingleClientSingleServer(t *testing.T) {
 	// And between Client and Proxy
 	ps3, ps4 := net.Pipe()
 
-	simServer := newSimulatedServer("s:1", e2e.NewGoatOverPipe(ps1))
+	simServer := newSimulatedServer("s:1", testutil.NewGoatOverPipe(ps1))
 	echoServer := &echoServer{}
 	testproto.RegisterTestServiceServer(simServer.srv, echoServer)
 
-	_ = newOneToOneProxy(e2e.NewGoatOverPipe(ps2), e2e.NewGoatOverPipe(ps3))
+	_ = newOneToOneProxy(testutil.NewGoatOverPipe(ps2), testutil.NewGoatOverPipe(ps3))
 
-	simClient := newSimulatedClient(e2e.NewGoatOverPipe(ps4))
+	simClient := newSimulatedClient(testutil.NewGoatOverPipe(ps4))
 
 	tpClient := testproto.NewTestServiceClient(simClient.newClientConn("src", "s:1"))
 	result, err := tpClient.Unary(context.Background(), &testproto.Msg{Value: 11})
@@ -203,11 +201,11 @@ func TestGoatOverPipesManyClientsSingleServer(t *testing.T) {
 	// Make a pipe for communication between Proxy and Server
 	ps1, ps2 := net.Pipe()
 
-	simServer := newSimulatedServer("server0", e2e.NewGoatOverPipe(ps1))
+	simServer := newSimulatedServer("server0", testutil.NewGoatOverPipe(ps1))
 	echoServer := &echoServer{}
 	testproto.RegisterTestServiceServer(simServer.srv, echoServer)
 
-	proxy := newManyToOneProxy(e2e.NewGoatOverPipe(ps2))
+	proxy := newManyToOneProxy(testutil.NewGoatOverPipe(ps2))
 
 	numClients := 100
 
@@ -219,10 +217,12 @@ func TestGoatOverPipesManyClientsSingleServer(t *testing.T) {
 
 		go func(v int) {
 			ps3, ps4 := net.Pipe()
-			proxy.AddClient(clientAddress, e2e.NewGoatOverPipe(ps3))
-			simClient := newSimulatedClient(e2e.NewGoatOverPipe(ps4))
+			proxy.AddClient(clientAddress, testutil.NewGoatOverPipe(ps3))
+			simClient := newSimulatedClient(testutil.NewGoatOverPipe(ps4))
 
-			tpClient := testproto.NewTestServiceClient(simClient.newClientConn(clientAddress, "server0"))
+			tpClient := testproto.NewTestServiceClient(
+				simClient.newClientConn(clientAddress, "server0"),
+			)
 			result, err := tpClient.Unary(context.Background(), &testproto.Msg{Value: 11})
 			if err != nil {
 				panic(err)
@@ -240,11 +240,11 @@ func TestGoatOverPipesManyClientsSingleServer(t *testing.T) {
 func TestGoatOverWebsocketsSingleClientSingleServer(t *testing.T) {
 	ps1, ps2 := net.Pipe()
 
-	simServer := newSimulatedServer("s:1", e2e.NewGoatOverPipe(ps1))
+	simServer := newSimulatedServer("s:1", testutil.NewGoatOverPipe(ps1))
 	echoServer := &echoServer{}
 	testproto.RegisterTestServiceServer(simServer.srv, echoServer)
 
-	proxy := newManyToOneProxy(e2e.NewGoatOverPipe(ps2))
+	proxy := newManyToOneProxy(testutil.NewGoatOverPipe(ps2))
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, nil)
@@ -253,7 +253,7 @@ func TestGoatOverWebsocketsSingleClientSingleServer(t *testing.T) {
 		}
 
 		clientAddress := "badf00d"
-		proxy.AddClient(clientAddress, e2e.NewGoatOverWebsocket(c))
+		proxy.AddClient(clientAddress, goat.NewGoatOverWebsocket(c))
 
 		// Something should take ownership of closing the connection; we don't do that
 		// yet in these tests.
@@ -272,12 +272,16 @@ func TestGoatOverWebsocketsSingleClientSingleServer(t *testing.T) {
 		}
 	}()
 
-	conn, _, err := websocket.Dial(context.Background(), fmt.Sprintf("ws://%s", listener.Addr().String()), nil)
+	conn, _, err := websocket.Dial(
+		context.Background(),
+		fmt.Sprintf("ws://%s", listener.Addr().String()),
+		nil,
+	)
 	if err != nil {
 		panic(err)
 	}
 
-	simClient := newSimulatedClient(e2e.NewGoatOverWebsocket(conn))
+	simClient := newSimulatedClient(goat.NewGoatOverWebsocket(conn))
 
 	tpClient := testproto.NewTestServiceClient(simClient.newClientConn("badf00d", "s:1"))
 	result, err := tpClient.Unary(context.Background(), &testproto.Msg{Value: 11})
@@ -296,19 +300,19 @@ func TestRealProxy(t *testing.T) {
 		clientAddress = "client:1"
 	)
 
-	srv := server.NewServer(serverAddress)
+	srv := goat.NewServer(serverAddress)
 	echoServer := &echoServer{}
 	testproto.RegisterTestServiceServer(srv, echoServer)
 
-	proxy := e2e.NewProxy(
+	proxy := goat.NewProxy(
 		proxyAddress,
 		func(id string) (goat.RpcReadWriter, error) {
 			if id == serverAddress {
 				ps3, ps4 := net.Pipe()
 
-				go srv.Serve(e2e.NewGoatOverPipe(ps4))
+				go srv.Serve(testutil.NewGoatOverPipe(ps4))
 
-				return e2e.NewGoatOverPipe(ps3), nil
+				return testutil.NewGoatOverPipe(ps3), nil
 			}
 
 			return nil, fmt.Errorf("invalid ID to connect to")
@@ -329,9 +333,9 @@ func TestRealProxy(t *testing.T) {
 
 	ps1, ps2 := net.Pipe()
 
-	proxy.AddClient(clientAddress, e2e.NewGoatOverPipe(ps2))
+	proxy.AddClient(clientAddress, testutil.NewGoatOverPipe(ps2))
 
-	simClient := newSimulatedClient(e2e.NewGoatOverPipe(ps1))
+	simClient := newSimulatedClient(testutil.NewGoatOverPipe(ps1))
 	tpClient := testproto.NewTestServiceClient(simClient.newClientConn(clientAddress, serviceName))
 
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*2))

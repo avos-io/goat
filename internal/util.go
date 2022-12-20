@@ -7,8 +7,8 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	"github.com/avos-io/goat"
 	wrapped "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/types"
 )
 
 func ToKeyValue(mds ...metadata.MD) []*wrapped.KeyValue {
@@ -49,7 +49,7 @@ func ToMetadata(kvs []*wrapped.KeyValue) (metadata.MD, error) {
 func NewFnReadWriter(
 	r func(context.Context) (*wrapped.Rpc, error),
 	w func(context.Context, *wrapped.Rpc) error,
-) goat.RpcReadWriter {
+) types.RpcReadWriter {
 	return &fnReadWriter{r, w}
 }
 
