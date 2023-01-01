@@ -213,7 +213,8 @@ func (h *handler) serve() error {
 		}
 
 		if rpc.GetHeader().Destination != h.srv.id {
-			log.Error().Msgf("Server: invalidation destination id %s", rpc.GetHeader().Destination)
+			log.Error().
+				Msgf("Server %s: invalid destination %s", h.srv.id, rpc.GetHeader().Destination)
 			continue
 		}
 
@@ -382,7 +383,14 @@ func (h *handler) runStream(
 		IsServerStream: sd.ServerStreams,
 	}
 
-	stream, err := server.NewServerStream(ctx, streamId, si.FullMethod, rw)
+	stream, err := server.NewServerStream(
+		ctx,
+		streamId,
+		si.FullMethod,
+		rpc.Header.Destination,
+		rpc.Header.Source,
+		rw,
+	)
 	if err != nil {
 		log.Error().Err(err).Msg("Server: newServerStream failed")
 		return err

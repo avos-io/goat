@@ -2,8 +2,9 @@ package goat
 
 import (
 	"context"
-	"log"
 	"sync"
+
+	"github.com/rs/zerolog/log"
 
 	wrapped "github.com/avos-io/goat/gen"
 )
@@ -55,6 +56,8 @@ func NewProxy(
 }
 
 func (p *proxy) AddClient(id string, conn RpcReadWriter) {
+	log.Info().Msgf("proxy.AddClient %s", id)
+
 	client := &proxyClient{
 		id:         id,
 		conn:       conn,
@@ -71,6 +74,8 @@ func (p *proxy) AddClient(id string, conn RpcReadWriter) {
 }
 
 func (p *proxy) addOutgoingConnectionLocked(id string) *proxyClient {
+	log.Info().Msgf("proxy.addOutgoingConnectionLocked %s", id)
+
 	client := &proxyClient{
 		id:         id,
 		toServer:   p.commands,
@@ -110,7 +115,8 @@ func (p *proxy) serveClients() {
 func (p *proxy) forwardRpc(source string, rpc *wrapped.Rpc) {
 	// Sanity check RPC first
 	if rpc.Header == nil || rpc.Header.Source != source {
-		log.Panicf("TODO: handle invalid RPC here (log and ignore?)")
+		log.Warn().Msgf("Bad Rpc: %v", rpc)
+		log.Panic().Msg("TODO: handle invalid RPC here (log and ignore?)")
 	}
 
 	// Apply any sort of address translation first: this allows implementing a
