@@ -155,17 +155,19 @@ func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
 
 	return &handler{
 		ctx:          ctx,
-    cancel:       cancel,
+		cancel:       cancel,
 		srv:          srv,
 		rw:           rw,
 		codec:        encoding.GetCodec(proto.Name),
 		streams:      map[uint64]chan *wrapped.Rpc{},
 		writeChan:    make(chan *wrapped.Rpc),
 		unaryRpcChan: make(chan unaryRpcArgs),
-  }
+	}
 }
 
 func (h *handler) serve() error {
+	defer h.cancel()
+
 	writeCtx, cancel := context.WithCancel(h.ctx)
 	defer cancel()
 
