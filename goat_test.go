@@ -192,7 +192,7 @@ func TestBidiStream(t *testing.T) {
 				func(stream testproto.TestService_BidiStreamServer) {
 					for {
 						msg, err := stream.Recv()
-						if err == io.EOF {
+						if err == io.EOF || err == context.Canceled {
 							return
 						}
 						is.NoError(err)

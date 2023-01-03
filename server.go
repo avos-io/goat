@@ -356,7 +356,7 @@ func (h *handler) runStream(
 		// The first Rpc in a stream is used to tell the server to start the stream;
 		// it must have an empty body. If this isn't the case, it must be because
 		// we've missed the first Rpc in the stream.
-		log.Info().Msgf("did not expect body: calling RST stream %s", streamId)
+		log.Info().Msgf("did not expect body: calling RST stream %d", streamId)
 		h.resetStream(rpc)
 		return nil
 	}
@@ -442,15 +442,25 @@ func (h *handler) unregisterStream(id uint64) {
 // resetStream instructs the caller to tear down and restart the stream. We call
 // this if something has gone irrecoverably wrong in the stream.
 func (h *handler) resetStream(rpc *wrapped.Rpc) {
-	h.rw.Write(h.ctx, &wrapped.Rpc{
-		Id:     rpc.GetId(),
-		Header: rpc.GetHeader(),
+	reset := &wrapped.Rpc{
+		Id: rpc.GetId(),
+		Header: &wrapped.RequestHeader{
+			Method:      rpc.GetHeader().GetMethod(),
+			Source:      rpc.GetHeader().GetDestination(),
+			Destination: rpc.GetHeader().GetSource(),
+		},
 		Status: &wrapped.ResponseStatus{
 			Code:    int32(codes.Aborted),
 			Message: "RST stream",
 		},
 		Trailer: &wrapped.Trailer{},
-	})
+	}
+
+	if len(rpc.Header.ProxyRecord) > 1 {
+		reset.Header.ProxyNext = rpc.Header.ProxyRecord[0 : len(rpc.Header.ProxyRecord)-1]
+	}
+
+	h.rw.Write(h.ctx, reset)
 }
 
 // contextFromHeaders returns a new incoming context with metadata populated
