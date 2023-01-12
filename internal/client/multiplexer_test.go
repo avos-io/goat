@@ -134,6 +134,35 @@ func TestUnaryMethodFailure(t *testing.T) {
 	assert.Equal(t, "Hello world", s.Message())
 }
 
+func TestUnaryMethodFailureChannelClosed(t *testing.T) {
+	// Make sure we properly handle the case where our IO disconnects while we're
+	// waiting on a reply to a unary Rpc.
+	rw := mocks.NewRpcReadWriter(t)
+
+	rm := client.NewRpcMultiplexer(rw)
+	defer rm.Close()
+
+	waitingOnReply := make(chan time.Time)
+
+	rw.EXPECT().Read(mock.Anything).WaitUntil(waitingOnReply).Return(nil, errTest)
+	rw.EXPECT().Write(mock.Anything, mock.Anything).Return(nil).
+		Run(func(_a0 context.Context, _a1 *wrapped.Rpc) {
+			waitingOnReply <- time.Now()
+		})
+
+	ret, err := rm.CallUnaryMethod(
+		context.Background(),
+		&wrapped.RequestHeader{
+			Method: "test",
+		},
+		&wrapped.Body{},
+	)
+
+	is := require.New(t)
+	is.Nil(ret)
+	is.Error(err)
+}
+
 func TestNewStreamReadWriter(t *testing.T) {
 	t.Run("Write", func(t *testing.T) {
 		rw := mocks.NewRpcReadWriter(t)

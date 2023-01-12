@@ -98,7 +98,10 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 	}
 
 	select {
-	case resp := <-respChan:
+	case resp, ok := <-respChan:
+		if !ok {
+			return nil, fmt.Errorf("respChan closed")
+		}
 		if resp.Body != nil {
 			return resp.Body, nil
 		}
