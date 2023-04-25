@@ -56,7 +56,7 @@ func (rm *RpcMultiplexer) closeError(err error) {
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
 
-	log.Info().Msg("RpcMultiplexer: Close")
+	log.Trace().Msg("RpcMultiplexer: Close")
 	rm.cancel()
 
 	if err != nil {
@@ -172,7 +172,7 @@ func (rm *RpcMultiplexer) readLoop() error {
 		rpc, err := rm.rw.Read(rm.ctx)
 
 		if err != nil {
-			log.Error().Err(err).Msg("Mux: readLoop error")
+			log.Trace().Err(err).Msg("Mux: readLoop error")
 			return err
 		}
 
