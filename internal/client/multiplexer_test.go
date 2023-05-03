@@ -68,9 +68,6 @@ func makeErrorResponse(id uint64, status *wrapped.ResponseStatus) *wrapped.Rpc {
 func TestUnaryMethodSuccess(t *testing.T) {
 	tc := &testConn{}
 
-	rm := client.NewRpcMultiplexer(tc)
-	defer rm.Close()
-
 	readChan := make(chan readReturn)
 
 	tc.On("Read", mock.Anything).Return(readChan)
@@ -78,6 +75,9 @@ func TestUnaryMethodSuccess(t *testing.T) {
 		Run(func(args mock.Arguments) {
 			readChan <- readReturn{makeResponse(1, &testproto.Msg{Value: 42}), nil}
 		})
+
+	rm := client.NewRpcMultiplexer(tc)
+	defer rm.Close()
 
 	valBytes, err := rm.CallUnaryMethod(
 		context.Background(),
@@ -99,9 +99,6 @@ func TestUnaryMethodSuccess(t *testing.T) {
 func TestUnaryMethodFailure(t *testing.T) {
 	tc := &testConn{}
 
-	rm := client.NewRpcMultiplexer(tc)
-	defer rm.Close()
-
 	readChan := make(chan readReturn)
 
 	tc.On("Read", mock.Anything).Return(readChan)
@@ -118,6 +115,9 @@ func TestUnaryMethodFailure(t *testing.T) {
 			}
 		})
 
+	rm := client.NewRpcMultiplexer(tc)
+	defer rm.Close()
+
 	valBytes, err := rm.CallUnaryMethod(
 		context.Background(),
 		&wrapped.RequestHeader{
@@ -132,6 +132,45 @@ func TestUnaryMethodFailure(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, codes.InvalidArgument, s.Code())
 	assert.Equal(t, "Hello world", s.Message())
+}
+
+// An error status is always an error, even if the resp also has a body.
+func TestUnaryMethodFailureDespiteBody(t *testing.T) {
+	tc := &testConn{}
+
+	readChan := make(chan readReturn)
+
+	resp := makeResponse(1, &testproto.Msg{Value: 42})
+	resp.Status = &wrapped.ResponseStatus{
+		Code:    int32(codes.InvalidArgument),
+		Message: "My status is telling me no... but my body... my body...",
+	}
+
+	tc.On("Read", mock.Anything).Return(readChan)
+	tc.On("Write", mock.Anything, mock.Anything).Return(nil).
+		Run(func(args mock.Arguments) {
+			readChan <- readReturn{resp, nil}
+		})
+
+	rm := client.NewRpcMultiplexer(tc)
+	defer rm.Close()
+
+	valBytes, err := rm.CallUnaryMethod(
+		context.Background(),
+		&wrapped.RequestHeader{
+			Method: "yes",
+		},
+		&wrapped.Body{},
+	)
+
+	is := require.New(t)
+	is.Nil(valBytes)
+
+	is.Error(err)
+	s, ok := status.FromError(err)
+	is.True(ok)
+	is.Equal(codes.InvalidArgument, s.Code())
+	is.Equal(resp.GetStatus().GetMessage(), s.Message())
 }
 
 func TestUnaryMethodFailureChannelClosed(t *testing.T) {
