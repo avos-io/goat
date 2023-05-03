@@ -102,15 +102,15 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 		if !ok {
 			return nil, fmt.Errorf("respChan closed")
 		}
-		if resp.Body != nil {
-			return resp.Body, nil
-		}
 		if resp.Status != nil {
 			return nil, status.FromProto(&spb.Status{
 				Code:    resp.Status.Code,
 				Message: resp.Status.Message,
 				Details: resp.Status.Details,
 			}).Err()
+		}
+		if resp.Body != nil {
+			return resp.Body, nil
 		}
 		return nil, fmt.Errorf("malformed response: no body or status")
 
