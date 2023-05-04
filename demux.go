@@ -5,6 +5,8 @@ import (
 	"sync"
 )
 
+type rpcToId func(*Rpc) string
+
 type demuxConn struct {
 	r chan *Rpc
 	w chan *Rpc
@@ -23,14 +25,18 @@ type Demux struct {
 		sync.Mutex
 		value map[string]*demuxConn
 	}
+
+	cb rpcToId
 }
 
 func NewDemux(
+	ctx context.Context,
 	server *Server,
 	r chan *Rpc,
 	w chan *Rpc,
+	cb rpcToId,
 ) *Demux {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 
 	gsd := &Demux{
 		ctx:    ctx,
@@ -38,6 +44,7 @@ func NewDemux(
 		server: server,
 		r:      r,
 		w:      w,
+		cb:     cb,
 	}
 	gsd.conns.value = make(map[string]*demuxConn)
 
@@ -58,9 +65,10 @@ func (gsd *Demux) Run() {
 				return
 			}
 			gsd.conns.Lock()
-			conn, ok := gsd.conns.value[rpc.Header.Source]
+			id := gsd.cb(rpc)
+			conn, ok := gsd.conns.value[id]
 			if !ok {
-				conn = gsd.newConnLocked(rpc.Header.Source)
+				conn = gsd.newConnLocked(id)
 			}
 			gsd.conns.Unlock()
 
