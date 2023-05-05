@@ -56,7 +56,7 @@ func setupClient(
 func setupDemuxServer(
 	s testproto.TestServiceServer, serverAddr string,
 ) (goat.RpcReadWriter, context.Context, func()) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 
 	server := goat.NewServer(serverAddr)
 	testproto.RegisterTestServiceServer(server, s)
@@ -76,7 +76,6 @@ func setupDemuxServer(
 	go demux.Run()
 
 	teardown := func() {
-		cancel()
 		demux.Stop()
 	}
 

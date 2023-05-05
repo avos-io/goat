@@ -52,6 +52,7 @@ func NewDemux(
 }
 
 func (gsd *Demux) Stop() {
+	gsd.server.Stop()
 	gsd.cancel()
 }
 
