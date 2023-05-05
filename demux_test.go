@@ -4,6 +4,7 @@ package goat_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -74,6 +75,7 @@ func setupDemuxServer(
 		},
 	)
 	go demux.Run()
+	time.Sleep(10 * time.Millisecond)
 
 	teardown := func() {
 		demux.Stop()
