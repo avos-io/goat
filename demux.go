@@ -20,6 +20,7 @@ type Demux struct {
 	server *Server
 	r      chan *Rpc
 	w      chan *Rpc
+	io     RpcReadWriter
 
 	conns struct {
 		sync.Mutex
@@ -44,6 +45,7 @@ func NewDemux(
 		server: server,
 		r:      r,
 		w:      w,
+		io:     NewGoatOverChannel(w, r),
 		cb:     cb,
 	}
 	gsd.conns.value = make(map[string]*demuxConn)
@@ -88,6 +90,10 @@ func (gsd *Demux) Cancel(id string) {
 	}
 
 	delete(gsd.conns.value, id)
+}
+
+func (gsd *Demux) IO() RpcReadWriter {
+	return gsd.io
 }
 
 func (gsd *Demux) newConnLocked(id string) *demuxConn {
