@@ -78,7 +78,6 @@ func setupDemuxServer(
 	teardown := func() {
 		cancel()
 		demux.Stop()
-		server.Stop()
 	}
 
 	return goat.NewGoatOverChannel(w, r), ctx, teardown
