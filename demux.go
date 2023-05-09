@@ -12,7 +12,7 @@ type demuxConn struct {
 	w chan *Rpc
 }
 
-// Wraps a Goat Server, demultiplexing IO based on source address.
+// Wraps a Goat Server, demultiplexing IO.
 type Demux struct {
 	ctx    context.Context
 	cancel context.CancelFunc

@@ -1,4 +1,3 @@
-// package contains end-to-end tests
 package goat_test
 
 import (
