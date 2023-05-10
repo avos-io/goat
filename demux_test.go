@@ -2,124 +2,101 @@ package goat_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
-	"time"
 
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/avos-io/goat"
-	"github.com/avos-io/goat/gen/testproto"
-	"github.com/avos-io/goat/gen/testproto/mocks"
+	wrapped "github.com/avos-io/goat/gen"
 )
 
-func TestDemux(t *testing.T) {
-	t.Run("OK", func(t *testing.T) {
+func TestDemuxSource(t *testing.T) {
+	t.Run("multiple clients, single request", func(t *testing.T) {
 		is := require.New(t)
 
-		send := &testproto.Msg{Value: 42}
-		exp := &testproto.Msg{Value: 9001}
+		r := make(chan *goat.Rpc)
+		w := make(chan *goat.Rpc)
 
-		service := mocks.NewTestServiceServer(t)
-		service.EXPECT().Unary(mock.Anything, mock.MatchedBy(
-			func(msg *testproto.Msg) bool {
-				return msg.GetValue() == send.GetValue()
+		rw := goat.NewGoatOverChannel(r, w)
+
+		conn := make(chan goat.RpcReadWriter)
+
+		demux := goat.NewDemux(
+			context.Background(),
+			rw,
+			func(rpc *goat.Rpc) string {
+				return rpc.Header.Source
 			},
-		)).Return(exp, nil)
+			func(rrw goat.RpcReadWriter) {
+				conn <- rrw
+			},
+		)
+		go demux.Run()
+		t.Cleanup(demux.Stop)
 
-		demux, ctx, teardown := setupDemuxServer(service, "server0")
-		defer teardown()
+		for i := 0; i < 10; i++ {
+			client := fmt.Sprintf("client%d", i)
+			rpc := &wrapped.Rpc{
+				Id: 1,
+				Header: &wrapped.RequestHeader{
+					Source: client,
+				},
+			}
 
-		client0 := setupClient(demux.IO(), "client0", "server0")
-		client1 := setupClient(demux.IO(), "client1", "server0")
+			r <- rpc
 
-		reply0, err := client0.Unary(ctx, send)
-		is.NoError(err)
-		is.NotNil(reply0)
-		is.Equal(exp.GetValue(), reply0.GetValue())
-
-		reply1, err := client1.Unary(ctx, send)
-		is.NoError(err)
-		is.NotNil(reply1)
-		is.Equal(exp.GetValue(), reply1.GetValue())
+			c := <-conn
+			rpc, err := c.Read(context.Background())
+			is.NoError(err)
+			is.Equal(rpc.GetId(), uint64(1))
+			is.Equal(rpc.GetHeader().GetSource(), client)
+		}
 	})
 
-	t.Run("One client disconnects", func(t *testing.T) {
+	t.Run("single client, multiple requests", func(t *testing.T) {
 		is := require.New(t)
 
-		send := &testproto.Msg{Value: 42}
-		exp := &testproto.Msg{Value: 9001}
+		r := make(chan *goat.Rpc)
+		w := make(chan *goat.Rpc)
 
-		service := mocks.NewTestServiceServer(t)
-		service.EXPECT().Unary(mock.Anything, mock.MatchedBy(
-			func(msg *testproto.Msg) bool {
-				return msg.GetValue() == send.GetValue()
+		rw := goat.NewGoatOverChannel(r, w)
+
+		conn := make(chan goat.RpcReadWriter)
+
+		demux := goat.NewDemux(
+			context.Background(),
+			rw,
+			func(rpc *goat.Rpc) string {
+				return rpc.Header.Source
 			},
-		)).Return(exp, nil)
+			func(rrw goat.RpcReadWriter) {
+				conn <- rrw
+			},
+		)
+		go demux.Run()
+		t.Cleanup(demux.Stop)
 
-		demux, ctx, teardown := setupDemuxServer(service, "server1")
-		defer teardown()
+		client := "client"
+		var c goat.RpcReadWriter
 
-		client0 := setupClient(demux.IO(), "client0", "server1")
-		client1 := setupClient(demux.IO(), "client1", "server1")
+		for i := 1; i < 10; i++ {
+			rpc := &wrapped.Rpc{
+				Id: uint64(i),
+				Header: &wrapped.RequestHeader{
+					Source: client,
+				},
+			}
 
-		reply0, err := client0.Unary(ctx, send)
-		is.NoError(err)
-		is.NotNil(reply0)
-		is.Equal(exp.GetValue(), reply0.GetValue())
+			r <- rpc
+			if i == 1 {
+				c = <-conn
+			}
 
-		reply1, err := client1.Unary(ctx, send)
-		is.NoError(err)
-		is.NotNil(reply1)
-		is.Equal(exp.GetValue(), reply1.GetValue())
-
-		demux.Cancel("client1")
-		// There's an unhandled rpc error in multiplexer due to newConnLocked
-		// in demux starting a goroutine but not being up before the client invokes
-		// the RPC (I think).
-		//
-		// Same as the sleep in setup below. Something to think about.
-		_, err = client1.Unary(ctx, send)
-		is.NoError(err)
+			rpc, err := c.Read(context.Background())
+			is.NoError(err)
+			is.Equal(rpc.GetId(), uint64(i))
+			is.Equal(rpc.GetHeader().GetSource(), client)
+		}
 	})
-}
-
-func setupClient(
-	srvRw goat.RpcReadWriter, clientAddr, serverAddr string,
-) testproto.TestServiceClient {
-	return testproto.NewTestServiceClient(
-		goat.NewClientConn(srvRw, clientAddr, serverAddr),
-	)
-}
-
-func setupDemuxServer(
-	s testproto.TestServiceServer, serverAddr string,
-) (*goat.Demux, context.Context, func()) {
-	ctx := context.Background()
-
-	server := goat.NewServer(serverAddr)
-	testproto.RegisterTestServiceServer(server, s)
-
-	r := make(chan *goat.Rpc)
-	w := make(chan *goat.Rpc)
-
-	demux := goat.NewDemux(
-		ctx,
-		server,
-		r,
-		w,
-		func(rpc *goat.Rpc) string {
-			return rpc.Header.Source
-		},
-	)
-	go demux.Run()
-	// TODO: there's a race here which requires a bit of time
-	// for the demux goroutine to be setup
-	time.Sleep(100 * time.Millisecond)
-
-	teardown := func() {
-		demux.Stop()
-	}
-
-	return demux, ctx, teardown
 }

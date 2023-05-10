@@ -5,8 +5,6 @@ import (
 	"sync"
 )
 
-type rpcToId func(*Rpc) string
-
 type demuxConn struct {
 	r chan *Rpc
 	w chan *Rpc
@@ -17,36 +15,31 @@ type Demux struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	server *Server
-	r      chan *Rpc
-	w      chan *Rpc
-	io     RpcReadWriter
+	rw RpcReadWriter
 
 	conns struct {
 		sync.Mutex
 		value map[string]*demuxConn
 	}
 
-	cb rpcToId
+	demuxOn         func(*Rpc) string
+	onNewConnection func(RpcReadWriter)
 }
 
 func NewDemux(
 	ctx context.Context,
-	server *Server,
-	r chan *Rpc,
-	w chan *Rpc,
-	cb rpcToId,
+	rw RpcReadWriter,
+	demuxOn func(*Rpc) string,
+	onNewConnection func(RpcReadWriter),
 ) *Demux {
 	ctx, cancel := context.WithCancel(ctx)
 
 	gsd := &Demux{
-		ctx:    ctx,
-		cancel: cancel,
-		server: server,
-		r:      r,
-		w:      w,
-		io:     NewGoatOverChannel(w, r),
-		cb:     cb,
+		ctx:             ctx,
+		cancel:          cancel,
+		rw:              rw,
+		demuxOn:         demuxOn,
+		onNewConnection: onNewConnection,
 	}
 	gsd.conns.value = make(map[string]*demuxConn)
 
@@ -54,29 +47,24 @@ func NewDemux(
 }
 
 func (gsd *Demux) Stop() {
-	gsd.server.Stop()
 	gsd.cancel()
 }
 
 func (gsd *Demux) Run() {
 	for {
-		select {
-		case <-gsd.ctx.Done():
+		rpc, err := gsd.rw.Read(gsd.ctx)
+		if err != nil {
 			return
-		case rpc, ok := <-gsd.r:
-			if !ok {
-				return
-			}
-			gsd.conns.Lock()
-			id := gsd.cb(rpc)
-			conn, ok := gsd.conns.value[id]
-			if !ok {
-				conn = gsd.newConnLocked(id)
-			}
-			gsd.conns.Unlock()
-
-			conn.r <- rpc
 		}
+		gsd.conns.Lock()
+		id := gsd.demuxOn(rpc)
+		conn, ok := gsd.conns.value[id]
+		if !ok {
+			conn = gsd.newConnLocked(id)
+		}
+		gsd.conns.Unlock()
+
+		conn.r <- rpc
 	}
 }
 
@@ -90,10 +78,6 @@ func (gsd *Demux) Cancel(id string) {
 	}
 
 	delete(gsd.conns.value, id)
-}
-
-func (gsd *Demux) IO() RpcReadWriter {
-	return gsd.io
 }
 
 func (gsd *Demux) newConnLocked(id string) *demuxConn {
@@ -111,14 +95,17 @@ func (gsd *Demux) newConnLocked(id string) *demuxConn {
 				if !ok {
 					return
 				}
-				gsd.w <- rpc
+				err := gsd.rw.Write(gsd.ctx, rpc)
+				if err != nil {
+					return
+				}
 			}
 		}
 	}()
 
 	gsd.conns.value[id] = c
 
-	go gsd.server.Serve(NewGoatOverChannel(c.r, c.w))
+	go gsd.onNewConnection(NewGoatOverChannel(c.r, c.w))
 
 	return c
 }
