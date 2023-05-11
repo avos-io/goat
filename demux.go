@@ -26,6 +26,8 @@ type Demux struct {
 	onNewConnection func(RpcReadWriter)
 }
 
+// NewDemux returns a new Demux which demultiplexex RPCs from the given |rw| 
+// into |onNewConnection| based the identity returned from |demuxOn|.
 func NewDemux(
 	ctx context.Context,
 	rw RpcReadWriter,
