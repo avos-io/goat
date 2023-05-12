@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
-	github.com/rs/zerolog v1.28.0
+	github.com/rs/zerolog v1.27.0
 	github.com/stretchr/testify v1.4.0
 	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013
 	google.golang.org/grpc v1.50.0
