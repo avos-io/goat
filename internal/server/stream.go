@@ -21,9 +21,12 @@ import (
 )
 
 type serverStream struct {
-	ctx    context.Context
-	id     uint64
+	ctx context.Context
+	id  uint64
+
 	method string
+	src    string
+	dst    string
 
 	codec encoding.Codec
 
@@ -45,12 +48,16 @@ func NewServerStream(
 	ctx context.Context,
 	id uint64,
 	method string,
+	src string,
+	dst string,
 	rw types.RpcReadWriter,
 ) (*serverStream, error) {
 	return &serverStream{
 		ctx:    ctx,
 		id:     id,
 		method: method,
+		src:    src,
+		dst:    dst,
 		codec:  encoding.GetCodec(proto.Name),
 		rw:     rw,
 	}, nil
@@ -90,8 +97,10 @@ func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
 	rpc := wrapped.Rpc{
 		Id: ss.id,
 		Header: &wrapped.RequestHeader{
-			Method:  ss.method,
-			Headers: internal.ToKeyValue(ss.protected.headers...),
+			Method:      ss.method,
+			Source:      ss.src,
+			Destination: ss.dst,
+			Headers:     internal.ToKeyValue(ss.protected.headers...),
 		},
 	}
 
@@ -151,7 +160,9 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 	rpc := wrapped.Rpc{
 		Id: ss.id,
 		Header: &wrapped.RequestHeader{
-			Method: ss.method,
+			Method:      ss.method,
+			Source:      ss.src,
+			Destination: ss.dst,
 		},
 		Body: &wrapped.Body{
 			Data: body,
@@ -226,7 +237,9 @@ func (ss *serverStream) SendTrailer(trErr error) error {
 	tr := wrapped.Rpc{
 		Id: ss.id,
 		Header: &wrapped.RequestHeader{
-			Method: ss.method,
+			Method:      ss.method,
+			Source:      ss.src,
+			Destination: ss.dst,
 		},
 		Status: &wrapped.ResponseStatus{
 			Code:    int32(codes.OK),

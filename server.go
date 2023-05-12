@@ -135,7 +135,8 @@ type unaryRpcArgs struct {
 
 // handler for a specific goat.RpcReadWriter
 type handler struct {
-	ctx context.Context
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	srv *Server
 
@@ -150,8 +151,11 @@ type handler struct {
 }
 
 func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
+	ctx, cancel := context.WithCancel(ctx)
+
 	return &handler{
 		ctx:          ctx,
+		cancel:       cancel,
 		srv:          srv,
 		rw:           rw,
 		codec:        encoding.GetCodec(proto.Name),
@@ -162,7 +166,9 @@ func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
 }
 
 func (h *handler) serve() error {
-	writeCtx, cancel := context.WithCancel(context.Background())
+	defer h.cancel()
+
+	writeCtx, cancel := context.WithCancel(h.ctx)
 	defer cancel()
 
 	go func() {
@@ -176,7 +182,7 @@ func (h *handler) serve() error {
 		}
 	}()
 
-	unaryRpcCtx, unaryRpcCtxCancel := context.WithCancel(context.Background())
+	unaryRpcCtx, unaryRpcCtxCancel := context.WithCancel(h.ctx)
 	defer unaryRpcCtxCancel()
 
 	const numRpcWorkers = 8
@@ -213,7 +219,8 @@ func (h *handler) serve() error {
 		}
 
 		if rpc.GetHeader().Destination != h.srv.id {
-			log.Error().Msgf("Server: invalidation destination id %s", rpc.GetHeader().Destination)
+			log.Error().
+				Msgf("Server %s: invalid destination %s", h.srv.id, rpc.GetHeader().Destination)
 			continue
 		}
 
@@ -247,7 +254,7 @@ func (h *handler) processUnaryRpc(
 	}
 	defer cancel()
 
-	fullMethod := fmt.Sprintf("%s/%s", info.name, md.MethodName)
+	fullMethod := fmt.Sprintf("/%s/%s", info.name, md.MethodName)
 	sts := server.NewUnaryServerTransportStream(fullMethod)
 	ctx = grpc.NewContextWithServerTransportStream(ctx, sts)
 
@@ -343,9 +350,16 @@ func (h *handler) runStream(
 	streamId uint64,
 	rCh chan *wrapped.Rpc,
 ) error {
-	ctx := context.Background()
-
 	defer h.unregisterStream(streamId)
+
+	if rpc.GetBody() != nil {
+		// The first Rpc in a stream is used to tell the server to start the stream;
+		// it must have an empty body. If this isn't the case, it must be because
+		// we've missed the first Rpc in the stream.
+		log.Info().Msgf("did not expect body: calling RST stream %d", streamId)
+		h.resetStream(rpc)
+		return nil
+	}
 
 	if rpc.GetTrailer() != nil {
 		// The client may send a trailer to end a stream after we've already ended
@@ -370,19 +384,26 @@ func (h *handler) runStream(
 		return nil
 	})
 
-	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
+	ctx, cancel, err := contextFromHeaders(h.ctx, rpc.GetHeader())
 	if err != nil {
 		log.Panic().Err(err).Msg("failed to create newStream")
 	}
 	defer cancel()
 
 	si := &grpc.StreamServerInfo{
-		FullMethod:     fmt.Sprintf("%s/%s", info.name, sd.StreamName),
+		FullMethod:     fmt.Sprintf("/%s/%s", info.name, sd.StreamName),
 		IsClientStream: sd.ClientStreams,
 		IsServerStream: sd.ServerStreams,
 	}
 
-	stream, err := server.NewServerStream(ctx, streamId, si.FullMethod, rw)
+	stream, err := server.NewServerStream(
+		ctx,
+		streamId,
+		si.FullMethod,
+		rpc.Header.Destination,
+		rpc.Header.Source,
+		rw,
+	)
 	if err != nil {
 		log.Error().Err(err).Msg("Server: newServerStream failed")
 		return err
@@ -416,6 +437,30 @@ func (h *handler) unregisterStream(id uint64) {
 	}
 
 	delete(h.streams, id)
+}
+
+// resetStream instructs the caller to tear down and restart the stream. We call
+// this if something has gone irrecoverably wrong in the stream.
+func (h *handler) resetStream(rpc *wrapped.Rpc) {
+	reset := &wrapped.Rpc{
+		Id: rpc.GetId(),
+		Header: &wrapped.RequestHeader{
+			Method:      rpc.GetHeader().GetMethod(),
+			Source:      rpc.GetHeader().GetDestination(),
+			Destination: rpc.GetHeader().GetSource(),
+		},
+		Status: &wrapped.ResponseStatus{
+			Code:    int32(codes.Aborted),
+			Message: "RST stream",
+		},
+		Trailer: &wrapped.Trailer{},
+	}
+
+	if len(rpc.Header.ProxyRecord) > 1 {
+		reset.Header.ProxyNext = rpc.Header.ProxyRecord[0 : len(rpc.Header.ProxyRecord)-1]
+	}
+
+	h.rw.Write(h.ctx, reset)
 }
 
 // contextFromHeaders returns a new incoming context with metadata populated

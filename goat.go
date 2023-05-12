@@ -14,6 +14,9 @@ import (
 // which all goat messages are serialised.
 type Rpc = proto.Rpc
 
+// RpcHeader represents the header of a Goat Rpc.
+type RpcHeader = proto.RequestHeader
+
 // RpcReadWriter is the generic interface used by Goat's client and servers.
 // It utilises the wrapped.Rpc protobuf format for generically wrapping gRPC
 // calls and their metadata.

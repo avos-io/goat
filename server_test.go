@@ -49,7 +49,7 @@ func TestUnary(t *testing.T) {
 		defer srv.Stop()
 
 		id := uint64(99)
-		method := testproto.TestService_ServiceDesc.ServiceName + "/Unary"
+		method := "/" + testproto.TestService_ServiceDesc.ServiceName + "/Unary"
 		sent := testproto.Msg{Value: 42}
 		exp := testproto.Msg{Value: 43}
 
@@ -89,7 +89,7 @@ func TestUnary(t *testing.T) {
 		defer srv.Stop()
 
 		id := uint64(1)
-		method := testproto.TestService_ServiceDesc.ServiceName + "/Unary"
+		method := "/" + testproto.TestService_ServiceDesc.ServiceName + "/Unary"
 		sent := testproto.Msg{Value: 42}
 
 		service := mocks.NewTestServiceServer(t)
@@ -207,7 +207,51 @@ func TestServerStream(t *testing.T) {
 				t.Fatal("timeout")
 			}
 		}
+	})
 
+	t.Run("We send RST stream if we receive a broken stream", func(t *testing.T) {
+		is := require.New(t)
+
+		id := uint64(99)
+		method := testproto.TestService_ServiceDesc.ServiceName + "/ServerStream"
+		src := "src"
+		dst := "dst"
+
+		srv := NewServer(dst)
+		defer srv.Stop()
+		testproto.RegisterTestServiceServer(srv, mocks.NewTestServiceServer(t))
+		conn := testutil.NewTestConn()
+
+		go func() {
+			srv.Serve(conn)
+		}()
+
+		// Just start sending data with no 'open stream'-- this indicates a broken
+		// stream, most likely a client 'reconnecting' to a different server than
+		// the one which it previously had a running stream with.
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &wrapped.Rpc{
+				Id: id,
+				Header: &wrapped.RequestHeader{
+					Method:      method,
+					Source:      src,
+					Destination: dst,
+				},
+				Body: &wrapped.Body{Data: []byte{'u', 'h', 'o', 'h'}},
+			},
+			Err: nil,
+		}
+
+		select {
+		case reply := <-conn.WriteChan:
+			is.Equal(id, reply.GetId())
+			is.Equal(dst, reply.GetHeader().GetSource())
+			is.Equal(src, reply.GetHeader().GetDestination())
+			is.Equal(int32(codes.Aborted), reply.GetStatus().GetCode())
+			is.Equal("RST stream", reply.GetStatus().GetMessage())
+		case <-time.After(1 * time.Second):
+			t.Fatal("timeout")
+		}
 	})
 }
 

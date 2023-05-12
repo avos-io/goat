@@ -2,8 +2,9 @@ package goat
 
 import (
 	"context"
-	"log"
 	"sync"
+
+	"github.com/rs/zerolog/log"
 
 	wrapped "github.com/avos-io/goat/gen"
 )
@@ -14,7 +15,7 @@ type RpcIntercepter func(hdr *wrapped.RequestHeader) error
 type NewConnection func(id string) (RpcReadWriter, error)
 type ClientDisconnect func(id string, reason error)
 
-type proxy struct {
+type Proxy struct {
 	id               string
 	newConnection    NewConnection
 	clientDisconnect ClientDisconnect
@@ -43,8 +44,8 @@ func NewProxy(
 	newConnection NewConnection,
 	rpcIntercepter RpcIntercepter,
 	onClientDisconnect ClientDisconnect,
-) *proxy {
-	return &proxy{
+) *Proxy {
+	return &Proxy{
 		id:               id,
 		newConnection:    newConnection,
 		rpcIntercepter:   rpcIntercepter,
@@ -54,7 +55,9 @@ func NewProxy(
 	}
 }
 
-func (p *proxy) AddClient(id string, conn RpcReadWriter) {
+func (p *Proxy) AddClient(id string, conn RpcReadWriter) {
+	log.Info().Msgf("proxy.AddClient %s", id)
+
 	client := &proxyClient{
 		id:         id,
 		conn:       conn,
@@ -70,7 +73,9 @@ func (p *proxy) AddClient(id string, conn RpcReadWriter) {
 	go client.writeLoop()
 }
 
-func (p *proxy) addOutgoingConnectionLocked(id string) *proxyClient {
+func (p *Proxy) addOutgoingConnectionLocked(id string) *proxyClient {
+	log.Info().Msgf("proxy.addOutgoingConnectionLocked %s", id)
+
 	client := &proxyClient{
 		id:         id,
 		toServer:   p.commands,
@@ -83,14 +88,14 @@ func (p *proxy) addOutgoingConnectionLocked(id string) *proxyClient {
 	return client
 }
 
-func (p *proxy) Serve() {
+func (p *Proxy) Serve() {
 	// For performance reasons, is it sane to have many instances of serveClients() running at once?
 	// Maybe we could fire up e.g. 8 of them.
 
 	p.serveClients()
 }
 
-func (p *proxy) serveClients() {
+func (p *Proxy) serveClients() {
 	for {
 		cmd := <-p.commands
 
@@ -107,10 +112,11 @@ func (p *proxy) serveClients() {
 	}
 }
 
-func (p *proxy) forwardRpc(source string, rpc *wrapped.Rpc) {
+func (p *Proxy) forwardRpc(source string, rpc *wrapped.Rpc) {
 	// Sanity check RPC first
 	if rpc.Header == nil || rpc.Header.Source != source {
-		log.Panicf("TODO: handle invalid RPC here (log and ignore?)")
+		log.Warn().Msgf("Bad Rpc: %v", rpc)
+		log.Panic().Msg("TODO: handle invalid RPC here (log and ignore?)")
 	}
 
 	// Apply any sort of address translation first: this allows implementing a

@@ -68,9 +68,6 @@ func makeErrorResponse(id uint64, status *wrapped.ResponseStatus) *wrapped.Rpc {
 func TestUnaryMethodSuccess(t *testing.T) {
 	tc := &testConn{}
 
-	rm := client.NewRpcMultiplexer(tc)
-	defer rm.Close()
-
 	readChan := make(chan readReturn)
 
 	tc.On("Read", mock.Anything).Return(readChan)
@@ -78,6 +75,9 @@ func TestUnaryMethodSuccess(t *testing.T) {
 		Run(func(args mock.Arguments) {
 			readChan <- readReturn{makeResponse(1, &testproto.Msg{Value: 42}), nil}
 		})
+
+	rm := client.NewRpcMultiplexer(tc)
+	defer rm.Close()
 
 	valBytes, err := rm.CallUnaryMethod(
 		context.Background(),
@@ -99,9 +99,6 @@ func TestUnaryMethodSuccess(t *testing.T) {
 func TestUnaryMethodFailure(t *testing.T) {
 	tc := &testConn{}
 
-	rm := client.NewRpcMultiplexer(tc)
-	defer rm.Close()
-
 	readChan := make(chan readReturn)
 
 	tc.On("Read", mock.Anything).Return(readChan)
@@ -117,6 +114,9 @@ func TestUnaryMethodFailure(t *testing.T) {
 				nil,
 			}
 		})
+
+	rm := client.NewRpcMultiplexer(tc)
+	defer rm.Close()
 
 	valBytes, err := rm.CallUnaryMethod(
 		context.Background(),
@@ -134,6 +134,74 @@ func TestUnaryMethodFailure(t *testing.T) {
 	assert.Equal(t, "Hello world", s.Message())
 }
 
+// An error status is always an error, even if the resp also has a body.
+func TestUnaryMethodFailureDespiteBody(t *testing.T) {
+	tc := &testConn{}
+
+	readChan := make(chan readReturn)
+
+	resp := makeResponse(1, &testproto.Msg{Value: 42})
+	resp.Status = &wrapped.ResponseStatus{
+		Code:    int32(codes.InvalidArgument),
+		Message: "My status is telling me no... but my body... my body...",
+	}
+
+	tc.On("Read", mock.Anything).Return(readChan)
+	tc.On("Write", mock.Anything, mock.Anything).Return(nil).
+		Run(func(args mock.Arguments) {
+			readChan <- readReturn{resp, nil}
+		})
+
+	rm := client.NewRpcMultiplexer(tc)
+	defer rm.Close()
+
+	valBytes, err := rm.CallUnaryMethod(
+		context.Background(),
+		&wrapped.RequestHeader{
+			Method: "yes",
+		},
+		&wrapped.Body{},
+	)
+
+	is := require.New(t)
+	is.Nil(valBytes)
+
+	is.Error(err)
+	s, ok := status.FromError(err)
+	is.True(ok)
+	is.Equal(codes.InvalidArgument, s.Code())
+	is.Equal(resp.GetStatus().GetMessage(), s.Message())
+}
+
+func TestUnaryMethodFailureChannelClosed(t *testing.T) {
+	// Make sure we properly handle the case where our IO disconnects while we're
+	// waiting on a reply to a unary Rpc.
+	rw := mocks.NewRpcReadWriter(t)
+
+	rm := client.NewRpcMultiplexer(rw)
+	defer rm.Close()
+
+	waitingOnReply := make(chan time.Time)
+
+	rw.EXPECT().Read(mock.Anything).WaitUntil(waitingOnReply).Return(nil, errTest)
+	rw.EXPECT().Write(mock.Anything, mock.Anything).Return(nil).
+		Run(func(_a0 context.Context, _a1 *wrapped.Rpc) {
+			waitingOnReply <- time.Now()
+		})
+
+	ret, err := rm.CallUnaryMethod(
+		context.Background(),
+		&wrapped.RequestHeader{
+			Method: "test",
+		},
+		&wrapped.Body{},
+	)
+
+	is := require.New(t)
+	is.Nil(ret)
+	is.Error(err)
+}
+
 func TestNewStreamReadWriter(t *testing.T) {
 	t.Run("Write", func(t *testing.T) {
 		rw := mocks.NewRpcReadWriter(t)
@@ -144,7 +212,9 @@ func TestNewStreamReadWriter(t *testing.T) {
 		rm := client.NewRpcMultiplexer(rw)
 		defer rm.Close()
 
-		id, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		id, srw, teardown, err := rm.NewStreamReadWriter(context.Background())
+		require.NoError(t, err)
+
 		defer teardown()
 
 		ctx := context.Background()
@@ -175,7 +245,9 @@ func TestNewStreamReadWriter(t *testing.T) {
 		readChan := make(chan readReturn)
 		tc.On("Read", mock.Anything).Return(readChan)
 
-		id, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		id, srw, teardown, err := rm.NewStreamReadWriter(context.Background())
+		require.NoError(t, err)
+
 		defer teardown()
 
 		rpc := &wrapped.Rpc{
@@ -206,7 +278,9 @@ func TestNewStreamReadWriter(t *testing.T) {
 		readChan := make(chan readReturn)
 		tc.On("Read", mock.Anything).Return(readChan)
 
-		id, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		id, srw, teardown, err := rm.NewStreamReadWriter(context.Background())
+		require.NoError(t, err)
+
 		defer teardown()
 
 		readChan <- readReturn{&wrapped.Rpc{Id: 9001}, nil}
@@ -240,7 +314,9 @@ func TestNewStreamReadWriter(t *testing.T) {
 		readChan := make(chan readReturn)
 		tc.On("Read", mock.Anything).Return(readChan)
 
-		_, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		_, srw, teardown, err := rm.NewStreamReadWriter(context.Background())
+		require.NoError(t, err)
+
 		defer teardown()
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -274,7 +350,9 @@ func TestNewStreamReadWriter(t *testing.T) {
 		readChan := make(chan readReturn)
 		tc.On("Read", mock.Anything).Return(readChan)
 
-		_, srw, teardown := rm.NewStreamReadWriter(context.Background())
+		_, srw, teardown, err := rm.NewStreamReadWriter(context.Background())
+
+		require.NoError(t, err)
 
 		teardown()
 

@@ -58,6 +58,22 @@ func TestUnary(t *testing.T) {
 		is.Error(err)
 		is.Nil(reply)
 	})
+
+	t.Run("Error with body is still error", func(t *testing.T) {
+		is := require.New(t)
+
+		exp := &testproto.Msg{Value: 9001}
+
+		service := mocks.NewTestServiceServer(t)
+		service.EXPECT().Unary(mock.Anything, mock.Anything).Return(exp, errTest)
+
+		client, ctx, teardown := setup(service)
+		defer teardown()
+
+		reply, err := client.Unary(ctx, &testproto.Msg{Value: 4})
+		is.Nil(reply) // we don't bother decoding the body
+		is.Error(err)
+	})
 }
 
 func TestServerStream(t *testing.T) {
@@ -192,7 +208,7 @@ func TestBidiStream(t *testing.T) {
 				func(stream testproto.TestService_BidiStreamServer) {
 					for {
 						msg, err := stream.Recv()
-						if err == io.EOF {
+						if err == io.EOF || err == context.Canceled {
 							return
 						}
 						is.NoError(err)
