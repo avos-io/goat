@@ -212,7 +212,7 @@ func (cs *clientStream) RecvMsg(m interface{}) error {
 			}
 			return err
 		}
-		return cs.codec.Unmarshal(body.Data, m)
+		return cs.codec.Unmarshal(body.GetData(), m)
 	}
 }
 
