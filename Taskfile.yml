@@ -44,7 +44,7 @@ tasks:
       - gen/proto.touch
     sources:
       - protobuild.sh
-      - "**/*.proto"
+      - "protorepo/goat/*.proto"
 
   gen-mocks:
     deps: [gen-proto]

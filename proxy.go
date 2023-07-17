@@ -6,7 +6,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	wrapped "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
 )
 
 // Is free to modify the passed in header, e.g. changing the Destination.

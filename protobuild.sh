@@ -17,7 +17,7 @@ if [ -n "${DISABLE_REQUIRE_UNIMPLEMENTED_SERVERS}" ]; then
 fi
 
 mkdir -p gen
-protoc --go_out=gen --go_opt=paths=source_relative --go-grpc_out=gen --go-grpc_opt=paths=source_relative ./wrapped.proto $grpc_opts
+protoc --go_out=gen --go_opt=paths=source_relative --go-grpc_out=gen --go-grpc_opt=paths=source_relative ./protorepo/goat/wrapped.proto $grpc_opts
 
 mkdir -p gen/testproto
 protoc --go_out=gen/testproto --go_opt=paths=source_relative --go-grpc_out=gen/testproto --go-grpc_opt=paths=source_relative ./test.proto $grpc_opts
