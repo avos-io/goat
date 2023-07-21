@@ -2,6 +2,7 @@ package goat_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -329,7 +330,10 @@ func TestRealProxy(t *testing.T) {
 		},
 		nil)
 
-	go proxy.Serve()
+	pctx, pcancel := context.WithCancel(context.Background())
+	defer pcancel()
+
+	go proxy.Serve(pctx)
 
 	ps1, ps2 := net.Pipe()
 
@@ -347,4 +351,66 @@ func TestRealProxy(t *testing.T) {
 	}
 
 	require.Equal(t, int32(11), result.Value)
+}
+
+func TestUnresponsiveClient(t *testing.T) {
+	const (
+		clientAddress1 = "client:1"
+		clientAddress2 = "client:2"
+	)
+
+	client1Read := make(chan *goat.Rpc)
+	client1Write := make(chan *goat.Rpc)
+	client1Rw := goat.NewGoatOverChannel(client1Write, client1Read)
+
+	client2Read := make(chan *goat.Rpc)
+	client2Write := make(chan *goat.Rpc)
+	client2Rw := goat.NewGoatOverChannel(client2Write, client2Read)
+
+	p := goat.NewProxy("me", func(id string) (goat.RpcReadWriter, error) {
+		println("Asking to connect to ", id)
+		return nil, errors.New("You fool")
+	}, func(hdr *wrapped.RequestHeader) error { return nil }, func(id string, reason error) {})
+
+	p.AddClient(clientAddress1, client1Rw)
+	p.AddClient(clientAddress2, client2Rw)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go p.Serve(ctx)
+
+	go func() {
+
+		client1Write <- &wrapped.Rpc{
+			Id: 1,
+			Header: &wrapped.RequestHeader{
+				Source:      clientAddress1,
+				Destination: clientAddress2,
+			},
+		}
+
+		client1Write <- &wrapped.Rpc{
+			Id: 2,
+			Header: &wrapped.RequestHeader{
+				Source:      clientAddress1,
+				Destination: clientAddress2,
+			},
+		}
+
+		client1Write <- &wrapped.Rpc{
+			Id: 3,
+			Header: &wrapped.RequestHeader{
+				Source:      clientAddress1,
+				Destination: clientAddress1,
+			},
+		}
+	}()
+
+	select {
+	case outRpc := <-client1Read:
+		require.Equal(t, 3, int(outRpc.Id))
+	case <-time.After(2 * time.Second):
+		t.FailNow()
+	}
 }

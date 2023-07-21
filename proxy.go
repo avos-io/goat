@@ -9,6 +9,10 @@ import (
 	wrapped "github.com/avos-io/goat/gen"
 )
 
+const (
+	clientBufferSize = 16
+)
+
 // Is free to modify the passed in header, e.g. changing the Destination.
 // If an error is returned, the RPC is dropped.
 type RpcIntercepter func(hdr *wrapped.RequestHeader) error
@@ -62,7 +66,7 @@ func (p *Proxy) AddClient(id string, conn RpcReadWriter) {
 		id:         id,
 		conn:       conn,
 		toServer:   p.commands,
-		fromServer: make(chan *wrapped.Rpc),
+		fromServer: make(chan *wrapped.Rpc, clientBufferSize),
 	}
 
 	p.mutex.Lock()
@@ -88,26 +92,30 @@ func (p *Proxy) addOutgoingConnectionLocked(id string) *proxyClient {
 	return client
 }
 
-func (p *Proxy) Serve() {
+func (p *Proxy) Serve(ctx context.Context) {
 	// For performance reasons, is it sane to have many instances of serveClients() running at once?
 	// Maybe we could fire up e.g. 8 of them.
 
-	p.serveClients()
+	p.serveClients(ctx)
 }
 
-func (p *Proxy) serveClients() {
+func (p *Proxy) serveClients(ctx context.Context) {
 	for {
-		cmd := <-p.commands
-
-		if cmd.rpc != nil {
-			p.forwardRpc(cmd.id, cmd.rpc)
-		} else if cmd.err != nil {
-			p.mutex.Lock()
-			delete(p.clients, cmd.id)
-			p.mutex.Unlock()
-			if p.clientDisconnect != nil {
-				p.clientDisconnect(cmd.id, cmd.err)
+		select {
+		case cmd := <-p.commands:
+			if cmd.rpc != nil {
+				p.forwardRpc(cmd.id, cmd.rpc)
+			} else if cmd.err != nil {
+				p.mutex.Lock()
+				delete(p.clients, cmd.id)
+				p.mutex.Unlock()
+				if p.clientDisconnect != nil {
+					p.clientDisconnect(cmd.id, cmd.err)
+				}
 			}
+		case <-ctx.Done():
+			log.Warn().Msg("serveClients context cancelled")
+			return
 		}
 	}
 }
@@ -153,7 +161,14 @@ func (p *Proxy) forwardRpc(source string, rpc *wrapped.Rpc) {
 	}
 	p.mutex.Unlock()
 
-	client.fromServer <- rpc
+	select {
+	case client.fromServer <- rpc:
+	default:
+		log.Warn().Str("source", rpc.Header.Source).
+			Str("destination", rpc.Header.Destination).
+			Str("method", rpc.Header.Method).
+			Msgf("Dropping packet")
+	}
 }
 
 func (c *proxyClient) readLoop() {
