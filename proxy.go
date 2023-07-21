@@ -83,7 +83,7 @@ func (p *Proxy) addOutgoingConnectionLocked(id string) *proxyClient {
 	client := &proxyClient{
 		id:         id,
 		toServer:   p.commands,
-		fromServer: make(chan *wrapped.Rpc),
+		fromServer: make(chan *wrapped.Rpc, clientBufferSize),
 	}
 	p.clients[id] = client
 
