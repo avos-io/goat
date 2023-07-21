@@ -261,11 +261,11 @@ func (h *handler) processUnaryRpc(
 	body := rpc.GetBody()
 
 	dec := func(msg interface{}) error {
-		if body.Data == nil {
+		if body.GetData() == nil {
 			return nil
 		}
 
-		if err := h.codec.Unmarshal(body.Data, msg); err != nil {
+		if err := h.codec.Unmarshal(body.GetData(), msg); err != nil {
 			return status.Error(codes.InvalidArgument, err.Error())
 		}
 		return nil

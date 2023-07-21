@@ -351,7 +351,7 @@ func unwrapBody(rpc *wrapped.Rpc) *testproto.Msg {
 	}
 
 	var out testproto.Msg
-	err := codec.Unmarshal(rpc.Body.Data, &out)
+	err := codec.Unmarshal(rpc.Body.GetData(), &out)
 	if err != nil {
 		panic(err)
 	}

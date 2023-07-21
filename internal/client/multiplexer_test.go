@@ -91,7 +91,7 @@ func TestUnaryMethodSuccess(t *testing.T) {
 	codec := encoding.GetCodec(proto.Name)
 
 	var val testproto.Msg
-	codec.Unmarshal(valBytes.Data, &val)
+	codec.Unmarshal(valBytes.GetData(), &val)
 
 	assert.Equal(t, int32(42), val.Value)
 }
