@@ -478,7 +478,7 @@ func contextFromHeaders(
 	ctx := metadata.NewIncomingContext(parent, md)
 
 	for _, hdr := range h.Headers {
-		if hdr.Key == "GRPC-Timeout" {
+		if strings.ToLower(hdr.Key) == "grpc-timeout" {
 			if timeout, ok := parseGrpcTimeout(hdr.Value); ok {
 				ctx, cancel = context.WithTimeout(ctx, timeout)
 				break
