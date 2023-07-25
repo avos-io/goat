@@ -261,7 +261,7 @@ func (h *handler) processUnaryRpc(
 	body := rpc.GetBody()
 
 	dec := func(msg interface{}) error {
-		if body.Data == nil {
+		if body.GetData() == nil {
 			return nil
 		}
 

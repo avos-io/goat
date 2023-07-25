@@ -97,7 +97,7 @@ func (cc *ClientConn) invoke(
 		return err
 	}
 
-	err = cc.codec.Unmarshal(replyBody.Data, reply)
+	err = cc.codec.Unmarshal(replyBody.GetData(), reply)
 	if err != nil {
 		log.Error().Err(err).Msg("Invoke Unmarshal")
 	}
