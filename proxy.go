@@ -187,7 +187,7 @@ func (c *proxyClient) readLoop(ctx context.Context) error {
 		select {
 		case c.toServer <- command{id: c.id, rpc: rpc}:
 		case <-ctx.Done():
-			return errors.New("context cancelled")
+			return errors.Wrap(ctx.Err(), "context cancelled")
 		}
 	}
 }
@@ -203,7 +203,7 @@ func (c *proxyClient) writeLoop(ctx context.Context) error {
 				return errors.Wrap(err, "failed to write to connection")
 			}
 		case <-ctx.Done():
-			return errors.New("context cancelled")
+			return errors.Wrap(ctx.Err(), "context cancelled")
 		}
 	}
 }
