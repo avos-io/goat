@@ -172,6 +172,7 @@ func (p *Proxy) forwardRpc(source string, rpc *wrapped.Rpc) {
 		log.Warn().Str("source", rpc.Header.Source).
 			Str("destination", rpc.Header.Destination).
 			Str("method", rpc.Header.Method).
+			Uint64("id", rpc.Id).
 			Msgf("Dropping packet")
 	}
 }
