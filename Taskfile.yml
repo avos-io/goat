@@ -20,7 +20,6 @@ tasks:
     vars:
       FLAGS: '{{default "-cover -timeout 30s" .FLAGS}}'
     cmds:
-      - go install github.com/nishanths/exhaustive/cmd/exhaustive@latest
       - exhaustive ./...
       - go test {{.FLAGS}} ./...
 
