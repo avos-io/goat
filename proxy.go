@@ -15,6 +15,10 @@ const (
 	clientBufferSize = 16
 )
 
+const (
+	clientBufferSize = 16
+)
+
 // Is free to modify the passed in header, e.g. changing the Destination.
 // If an error is returned, the RPC is dropped.
 type RpcIntercepter func(hdr *wrapped.RequestHeader) error
