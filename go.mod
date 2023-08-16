@@ -12,7 +12,10 @@ require (
 	nhooyr.io/websocket v1.8.7
 )
 
-require github.com/golang/protobuf v1.5.2 // indirect
+require (
+	github.com/golang/protobuf v1.5.2 // indirect
+	golang.org/x/sync v0.3.0 // indirect
+)
 
 require (
 	github.com/benbjohnson/clock v1.3.0
