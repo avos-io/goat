@@ -20,6 +20,7 @@ tasks:
     vars:
       FLAGS: '{{default "-cover -timeout 30s" .FLAGS}}'
     cmds:
+      - exhaustive ./...
       - go test {{.FLAGS}} ./...
 
   build:

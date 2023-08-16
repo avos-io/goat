@@ -2,6 +2,7 @@ package goat_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -12,8 +13,10 @@ import (
 
 	"github.com/avos-io/goat"
 	wrapped "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/gen/mocks"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/internal/testutil"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"nhooyr.io/websocket"
@@ -304,7 +307,11 @@ func TestRealProxy(t *testing.T) {
 	echoServer := &echoServer{}
 	testproto.RegisterTestServiceServer(srv, echoServer)
 
+	pctx, pcancel := context.WithCancel(context.Background())
+	defer pcancel()
+
 	proxy := goat.NewProxy(
+		pctx,
 		proxyAddress,
 		func(id string) (goat.RpcReadWriter, error) {
 			if id == serverAddress {
@@ -347,4 +354,179 @@ func TestRealProxy(t *testing.T) {
 	}
 
 	require.Equal(t, int32(11), result.Value)
+}
+
+func TestContextCancelled(t *testing.T) {
+	const (
+		clientAddress1 = "client:1"
+	)
+
+	client1Read := make(chan *goat.Rpc)
+	client1Write := make(chan *goat.Rpc)
+	client1Rw := goat.NewGoatOverChannel(client1Write, client1Read)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	p := goat.NewProxy(
+		ctx,
+		"me",
+		func(id string) (goat.RpcReadWriter, error) {
+			return nil, errors.New("You fool")
+		},
+		func(hdr *wrapped.RequestHeader) error { return nil },
+		func(id string, reason error) {},
+	)
+
+	p.AddClient(clientAddress1, client1Rw)
+
+	go p.Serve()
+
+	client1Write <- &wrapped.Rpc{
+		Id: 1,
+		Header: &wrapped.RequestHeader{
+			Source:      clientAddress1,
+			Destination: clientAddress1,
+		},
+	}
+
+	// We should receive this rpc
+	select {
+	case <-client1Read:
+	case <-time.After(1 * time.Second):
+		t.FailNow()
+	}
+
+	cancel()
+
+	select {
+	case client1Write <- &wrapped.Rpc{
+		Id: 2,
+		Header: &wrapped.RequestHeader{
+			Source:      clientAddress1,
+			Destination: clientAddress1,
+		},
+	}:
+		t.FailNow() // Should no longer be reading from this channel
+	default:
+	}
+}
+
+func TestReadErrorClosesBothLoops(t *testing.T) {
+	const (
+		clientAddress1 = "client:1"
+		clientAddress2 = "client:2"
+	)
+
+	doneChannel := make(chan struct{})
+
+	client1Rw := mocks.NewRpcReadWriter(t)
+	client1Rw.EXPECT().Write(mock.Anything, mock.Anything).Return(errors.New("error"))
+	client1Rw.EXPECT().Read(mock.Anything).Run(func(ctx context.Context) {
+		<-ctx.Done()
+		doneChannel <- struct{}{}
+	}).Return(nil, errors.New("Context cancelled"))
+
+	client2Read := make(chan *goat.Rpc)
+	client2Write := make(chan *goat.Rpc)
+	client2Rw := goat.NewGoatOverChannel(client2Write, client2Read)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	p := goat.NewProxy(
+		ctx,
+		"me",
+		func(id string) (goat.RpcReadWriter, error) {
+			return nil, errors.New("You fool")
+		},
+		func(hdr *wrapped.RequestHeader) error { return nil },
+		func(id string, reason error) {},
+	)
+
+	p.AddClient(clientAddress1, client1Rw)
+	p.AddClient(clientAddress2, client2Rw)
+
+	go p.Serve()
+
+	client2Write <- &wrapped.Rpc{
+		Id: 1,
+		Header: &wrapped.RequestHeader{
+			Source:      clientAddress2,
+			Destination: clientAddress1,
+		},
+	}
+
+	select {
+	case <-doneChannel:
+	case <-time.After(1 * time.Second):
+		t.FailNow()
+	}
+}
+
+func TestUnresponsiveClient(t *testing.T) {
+	const (
+		clientAddress1 = "client:1"
+		clientAddress2 = "client:2"
+	)
+
+	client1Read := make(chan *goat.Rpc)
+	client1Write := make(chan *goat.Rpc)
+	client1Rw := goat.NewGoatOverChannel(client1Write, client1Read)
+
+	client2Read := make(chan *goat.Rpc)
+	client2Write := make(chan *goat.Rpc)
+	client2Rw := goat.NewGoatOverChannel(client2Write, client2Read)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	p := goat.NewProxy(
+		ctx,
+		"me",
+		func(id string) (goat.RpcReadWriter, error) {
+			println("Asking to connect to ", id)
+			return nil, errors.New("You fool")
+		},
+		func(hdr *wrapped.RequestHeader) error { return nil },
+		func(id string, reason error) {},
+	)
+
+	p.AddClient(clientAddress1, client1Rw)
+	p.AddClient(clientAddress2, client2Rw)
+
+	go p.Serve()
+
+	go func() {
+
+		client1Write <- &wrapped.Rpc{
+			Id: 1,
+			Header: &wrapped.RequestHeader{
+				Source:      clientAddress1,
+				Destination: clientAddress2,
+			},
+		}
+
+		client1Write <- &wrapped.Rpc{
+			Id: 2,
+			Header: &wrapped.RequestHeader{
+				Source:      clientAddress1,
+				Destination: clientAddress2,
+			},
+		}
+
+		client1Write <- &wrapped.Rpc{
+			Id: 3,
+			Header: &wrapped.RequestHeader{
+				Source:      clientAddress1,
+				Destination: clientAddress1,
+			},
+		}
+	}()
+
+	select {
+	case outRpc := <-client1Read:
+		require.Equal(t, 3, int(outRpc.Id))
+	case <-time.After(2 * time.Second):
+		t.FailNow()
+	}
 }
