@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/status"
 
-	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/gen/mocks"
+	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/internal/client"
 )
@@ -91,7 +91,7 @@ func TestUnaryMethodSuccess(t *testing.T) {
 	codec := encoding.GetCodec(proto.Name)
 
 	var val testproto.Msg
-	codec.Unmarshal(valBytes.Data, &val)
+	codec.Unmarshal(valBytes.GetData(), &val)
 
 	assert.Equal(t, int32(42), val.Value)
 }

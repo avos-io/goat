@@ -7,7 +7,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	wrapped "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
 	"github.com/avos-io/goat/internal"
 	"github.com/avos-io/goat/internal/client"
 	"google.golang.org/grpc"
@@ -97,7 +97,7 @@ func (cc *ClientConn) invoke(
 		return err
 	}
 
-	err = cc.codec.Unmarshal(replyBody.Data, reply)
+	err = cc.codec.Unmarshal(replyBody.GetData(), reply)
 	if err != nil {
 		log.Error().Err(err).Msg("Invoke Unmarshal")
 	}

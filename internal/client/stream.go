@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	wrapped "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
 	"github.com/avos-io/goat/internal"
 	"github.com/avos-io/goat/types"
 )
@@ -212,7 +212,7 @@ func (cs *clientStream) RecvMsg(m interface{}) error {
 			}
 			return err
 		}
-		return cs.codec.Unmarshal(body.Data, m)
+		return cs.codec.Unmarshal(body.GetData(), m)
 	}
 }
 
