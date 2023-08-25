@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 
-	wrapped "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/gen/testproto/mocks"
 	"github.com/avos-io/goat/internal/testutil"
@@ -351,7 +351,7 @@ func unwrapBody(rpc *wrapped.Rpc) *testproto.Msg {
 	}
 
 	var out testproto.Msg
-	err := codec.Unmarshal(rpc.Body.Data, &out)
+	err := codec.Unmarshal(rpc.Body.GetData(), &out)
 	if err != nil {
 		panic(err)
 	}
