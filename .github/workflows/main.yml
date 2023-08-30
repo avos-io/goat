@@ -22,7 +22,7 @@ jobs:
         token: ${{ secrets.PROTOREPO_ACCESS }}
 
     - name: Update submodules
-      run:  git submodule update --init --recursive
+      run: git submodule update --init --recursive
 
     - name: Setup Golang with cache
       uses: magnetikonline/action-golang-cache@v3

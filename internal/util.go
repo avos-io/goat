@@ -7,7 +7,7 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	wrapped "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
 	"github.com/avos-io/goat/types"
 )
 

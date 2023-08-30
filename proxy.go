@@ -4,9 +4,15 @@ import (
 	"context"
 	"sync"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 
-	wrapped "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
+)
+
+const (
+	clientBufferSize = 16
 )
 
 // Is free to modify the passed in header, e.g. changing the Destination.
@@ -24,6 +30,8 @@ type Proxy struct {
 	mutex    sync.Mutex
 	clients  map[string]*proxyClient
 	commands chan command
+
+	ctx context.Context
 }
 
 type command struct {
@@ -40,12 +48,14 @@ type proxyClient struct {
 }
 
 func NewProxy(
+	ctx context.Context,
 	id string,
 	newConnection NewConnection,
 	rpcIntercepter RpcIntercepter,
 	onClientDisconnect ClientDisconnect,
 ) *Proxy {
 	return &Proxy{
+		ctx:              ctx,
 		id:               id,
 		newConnection:    newConnection,
 		rpcIntercepter:   rpcIntercepter,
@@ -62,15 +72,14 @@ func (p *Proxy) AddClient(id string, conn RpcReadWriter) {
 		id:         id,
 		conn:       conn,
 		toServer:   p.commands,
-		fromServer: make(chan *wrapped.Rpc),
+		fromServer: make(chan *wrapped.Rpc, clientBufferSize),
 	}
 
 	p.mutex.Lock()
 	p.clients[id] = client
 	p.mutex.Unlock()
 
-	go client.readLoop()
-	go client.writeLoop()
+	go client.readWrite(p.ctx)
 }
 
 func (p *Proxy) addOutgoingConnectionLocked(id string) *proxyClient {
@@ -79,11 +88,11 @@ func (p *Proxy) addOutgoingConnectionLocked(id string) *proxyClient {
 	client := &proxyClient{
 		id:         id,
 		toServer:   p.commands,
-		fromServer: make(chan *wrapped.Rpc),
+		fromServer: make(chan *wrapped.Rpc, clientBufferSize),
 	}
 	p.clients[id] = client
 
-	go client.connect(p.newConnection)
+	go client.connect(p.ctx, p.newConnection)
 
 	return client
 }
@@ -92,22 +101,26 @@ func (p *Proxy) Serve() {
 	// For performance reasons, is it sane to have many instances of serveClients() running at once?
 	// Maybe we could fire up e.g. 8 of them.
 
-	p.serveClients()
+	p.serveClients(p.ctx)
 }
 
-func (p *Proxy) serveClients() {
+func (p *Proxy) serveClients(ctx context.Context) {
 	for {
-		cmd := <-p.commands
-
-		if cmd.rpc != nil {
-			p.forwardRpc(cmd.id, cmd.rpc)
-		} else if cmd.err != nil {
-			p.mutex.Lock()
-			delete(p.clients, cmd.id)
-			p.mutex.Unlock()
-			if p.clientDisconnect != nil {
-				p.clientDisconnect(cmd.id, cmd.err)
+		select {
+		case cmd := <-p.commands:
+			if cmd.rpc != nil {
+				p.forwardRpc(cmd.id, cmd.rpc)
+			} else if cmd.err != nil {
+				p.mutex.Lock()
+				delete(p.clients, cmd.id)
+				p.mutex.Unlock()
+				if p.clientDisconnect != nil {
+					p.clientDisconnect(cmd.id, cmd.err)
+				}
 			}
+		case <-ctx.Done():
+			log.Warn().Msg("serveClients context cancelled")
+			return
 		}
 	}
 }
@@ -153,36 +166,57 @@ func (p *Proxy) forwardRpc(source string, rpc *wrapped.Rpc) {
 	}
 	p.mutex.Unlock()
 
-	client.fromServer <- rpc
+	select {
+	case client.fromServer <- rpc:
+	default:
+		log.Warn().Str("source", rpc.Header.Source).
+			Str("destination", rpc.Header.Destination).
+			Str("method", rpc.Header.Method).
+			Uint64("id", rpc.Id).
+			Msgf("Dropping packet")
+	}
 }
 
-func (c *proxyClient) readLoop() {
-	ctx := context.Background()
+func (c *proxyClient) readLoop(ctx context.Context) error {
 	for {
 		rpc, err := c.conn.Read(ctx)
 		if err != nil {
 			c.toServer <- command{id: c.id, err: err}
-			return
+			return errors.Wrap(err, "failed to read from connection")
 		}
 
-		c.toServer <- command{id: c.id, rpc: rpc}
+		select {
+		case c.toServer <- command{id: c.id, rpc: rpc}:
+		case <-ctx.Done():
+			return errors.Wrap(ctx.Err(), "context cancelled")
+		}
 	}
 }
 
-func (c *proxyClient) writeLoop() {
-	ctx := context.Background()
+func (c *proxyClient) writeLoop(ctx context.Context) error {
 	for {
-		rpc := <-c.fromServer
+		select {
+		case rpc := <-c.fromServer:
 
-		err := c.conn.Write(ctx, rpc)
-		if err != nil {
-			c.toServer <- command{id: c.id, err: err}
-			return
+			err := c.conn.Write(ctx, rpc)
+			if err != nil {
+				c.toServer <- command{id: c.id, err: err}
+				return errors.Wrap(err, "failed to write to connection")
+			}
+		case <-ctx.Done():
+			return errors.Wrap(ctx.Err(), "context cancelled")
 		}
 	}
 }
 
-func (c *proxyClient) connect(newConnection NewConnection) {
+func (c *proxyClient) readWrite(ctx context.Context) {
+	e, ctx := errgroup.WithContext(ctx)
+	e.Go(func() error { return c.readLoop(ctx) })
+	e.Go(func() error { return c.writeLoop(ctx) })
+	log.Err(e.Wait()).Caller().Msg("readWrite failed")
+}
+
+func (c *proxyClient) connect(ctx context.Context, newConnection NewConnection) {
 	var err error
 
 	c.conn, err = newConnection(c.id)
@@ -191,6 +225,5 @@ func (c *proxyClient) connect(newConnection NewConnection) {
 		return
 	}
 
-	go c.readLoop()
-	go c.writeLoop()
+	go c.readWrite(ctx)
 }

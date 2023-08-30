@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	wrapped "github.com/avos-io/goat/gen"
+	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
 	"github.com/avos-io/goat/internal"
 	"github.com/avos-io/goat/internal/server"
 )
@@ -478,7 +478,7 @@ func contextFromHeaders(
 	ctx := metadata.NewIncomingContext(parent, md)
 
 	for _, hdr := range h.Headers {
-		if hdr.Key == "GRPC-Timeout" {
+		if strings.ToLower(hdr.Key) == "grpc-timeout" {
 			if timeout, ok := parseGrpcTimeout(hdr.Value); ok {
 				ctx, cancel = context.WithTimeout(ctx, timeout)
 				break

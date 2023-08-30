@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
 
-	wrapped "github.com/avos-io/goat/gen"
 	"github.com/avos-io/goat/gen/mocks"
+	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/internal"
 )
