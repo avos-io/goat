@@ -2,6 +2,8 @@ module github.com/avos-io/goat
 
 go 1.19
 
+replace github.com/avos-io/goatorepo => ./goatorepo/
+
 require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/rs/zerolog v1.27.0
@@ -10,6 +12,7 @@ require (
 	google.golang.org/grpc v1.50.0
 	google.golang.org/protobuf v1.27.1
 	nhooyr.io/websocket v1.8.7
+	github.com/avos-io/goatorepo v0.0.0-00010101000000-000000000000
 )
 
 require (
