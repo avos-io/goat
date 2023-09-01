@@ -3,7 +3,7 @@ package testutil
 import (
 	"context"
 
-	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
+	wrapped "github.com/avos-io/goat/gen/goatorepo"
 )
 
 type TestConn struct {

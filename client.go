@@ -7,7 +7,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
+	wrapped "github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/internal"
 	"github.com/avos-io/goat/internal/client"
 	"google.golang.org/grpc"

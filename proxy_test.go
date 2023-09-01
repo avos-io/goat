@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/avos-io/goat"
+	wrapped "github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/gen/mocks"
-	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/internal/testutil"
 	"github.com/stretchr/testify/mock"
