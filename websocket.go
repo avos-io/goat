@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	goatorepo "github.com/avos-io/goat/gen/goatorepo"
+	"github.com/avos-io/goat/gen/goatorepo"
 	"google.golang.org/protobuf/proto"
 	"nhooyr.io/websocket"
 )

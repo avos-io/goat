@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/avos-io/goat"
-	goatorepo "github.com/avos-io/goat/gen/goatorepo"
+	"github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/gen/mocks"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/internal/testutil"
