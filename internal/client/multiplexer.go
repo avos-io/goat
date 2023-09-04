@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/status"
 
-	wrapped "github.com/avos-io/goat/gen/goatorepo"
+	goatorepo "github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/internal"
 	"github.com/avos-io/goat/types"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
@@ -19,7 +19,7 @@ import (
 
 type RpcMultiplexer struct {
 	rw       types.RpcReadWriter
-	handlers map[uint64]chan *wrapped.Rpc
+	handlers map[uint64]chan *goatorepo.Rpc
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -34,7 +34,7 @@ type RpcMultiplexer struct {
 func NewRpcMultiplexer(rw types.RpcReadWriter) *RpcMultiplexer {
 	rm := &RpcMultiplexer{
 		rw:       rw,
-		handlers: make(map[uint64]chan *wrapped.Rpc),
+		handlers: make(map[uint64]chan *goatorepo.Rpc),
 		codec:    encoding.GetCodec(proto.Name),
 	}
 
@@ -70,9 +70,9 @@ func (rm *RpcMultiplexer) closeError(err error) {
 
 func (rm *RpcMultiplexer) CallUnaryMethod(
 	ctx context.Context,
-	header *wrapped.RequestHeader,
-	body *wrapped.Body,
-) (*wrapped.Body, error) {
+	header *goatorepo.RequestHeader,
+	body *goatorepo.Body,
+) (*goatorepo.Body, error) {
 
 	if err := rm.readErrorIfDone(); err != nil {
 		return nil, err
@@ -80,12 +80,12 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 
 	streamId := atomic.AddUint64(&rm.streamCounter, 1)
 
-	respChan := make(chan *wrapped.Rpc, 1)
+	respChan := make(chan *goatorepo.Rpc, 1)
 
 	rm.registerHandler(streamId, respChan)
 	defer rm.unregisterHandler(streamId)
 
-	rpc := wrapped.Rpc{
+	rpc := goatorepo.Rpc{
 		Id:     streamId,
 		Header: header,
 		Body:   body,
@@ -132,7 +132,7 @@ func (rm *RpcMultiplexer) NewStreamReadWriter(
 
 	streamId := atomic.AddUint64(&rm.streamCounter, 1)
 
-	respChan := make(chan *wrapped.Rpc, 1)
+	respChan := make(chan *goatorepo.Rpc, 1)
 	rm.registerHandler(streamId, respChan)
 
 	teardown := func() {
@@ -140,7 +140,7 @@ func (rm *RpcMultiplexer) NewStreamReadWriter(
 	}
 
 	rw := internal.NewFnReadWriter(
-		func(ctx context.Context) (*wrapped.Rpc, error) {
+		func(ctx context.Context) (*goatorepo.Rpc, error) {
 			select {
 			case rpc, ok := <-respChan:
 				if !ok {
@@ -154,7 +154,7 @@ func (rm *RpcMultiplexer) NewStreamReadWriter(
 				return nil, ctx.Err()
 			}
 		},
-		func(ctx context.Context, rpc *wrapped.Rpc) error {
+		func(ctx context.Context, rpc *goatorepo.Rpc) error {
 			err := rm.rw.Write(ctx, rpc)
 			if err != nil {
 				if rErr := rm.readErrorIfDone(); rErr != nil {
@@ -180,7 +180,7 @@ func (rm *RpcMultiplexer) readLoop() error {
 	}
 }
 
-func (rm *RpcMultiplexer) handleResponse(rpc *wrapped.Rpc) {
+func (rm *RpcMultiplexer) handleResponse(rpc *goatorepo.Rpc) {
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
 
@@ -192,7 +192,7 @@ func (rm *RpcMultiplexer) handleResponse(rpc *wrapped.Rpc) {
 	ch <- rpc
 }
 
-func (rm *RpcMultiplexer) registerHandler(id uint64, c chan *wrapped.Rpc) {
+func (rm *RpcMultiplexer) registerHandler(id uint64, c chan *goatorepo.Rpc) {
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
 

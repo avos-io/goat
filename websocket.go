@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	wrapped "github.com/avos-io/goat/gen/goatorepo"
+	goatorepo "github.com/avos-io/goat/gen/goatorepo"
 	"google.golang.org/protobuf/proto"
 	"nhooyr.io/websocket"
 )
@@ -19,7 +19,7 @@ func NewGoatOverWebsocket(ws *websocket.Conn) RpcReadWriter {
 	return &goatOverWebsocket{ws}
 }
 
-func (ws *goatOverWebsocket) Read(ctx context.Context) (*wrapped.Rpc, error) {
+func (ws *goatOverWebsocket) Read(ctx context.Context) (*goatorepo.Rpc, error) {
 	typ, data, err := ws.conn.Read(ctx)
 
 	if err != nil {
@@ -30,7 +30,7 @@ func (ws *goatOverWebsocket) Read(ctx context.Context) (*wrapped.Rpc, error) {
 		return nil, errNonBinaryWebsocketMessage
 	}
 
-	var rpc wrapped.Rpc
+	var rpc goatorepo.Rpc
 	err = proto.Unmarshal(data, &rpc)
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func (ws *goatOverWebsocket) Read(ctx context.Context) (*wrapped.Rpc, error) {
 	return &rpc, nil
 }
 
-func (ws *goatOverWebsocket) Write(ctx context.Context, pkt *wrapped.Rpc) error {
+func (ws *goatOverWebsocket) Write(ctx context.Context, pkt *goatorepo.Rpc) error {
 	data, err := proto.Marshal(pkt)
 	if err != nil {
 		return err

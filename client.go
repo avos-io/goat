@@ -7,7 +7,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	wrapped "github.com/avos-io/goat/gen/goatorepo"
+	goatorepo "github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/internal"
 	"github.com/avos-io/goat/internal/client"
 	"google.golang.org/grpc"
@@ -81,13 +81,13 @@ func (cc *ClientConn) invoke(
 	}
 
 	replyBody, err := cc.mp.CallUnaryMethod(ctx,
-		&wrapped.RequestHeader{
+		&goatorepo.RequestHeader{
 			Method:      method,
 			Headers:     headers,
 			Source:      cc.sourceAddress,
 			Destination: cc.destAddress,
 		},
-		&wrapped.Body{
+		&goatorepo.Body{
 			Data: body,
 		},
 	)
@@ -145,9 +145,9 @@ func (cc *ClientConn) newStream(
 	}
 
 	// open stream
-	rpc := wrapped.Rpc{
+	rpc := goatorepo.Rpc{
 		Id: id,
-		Header: &wrapped.RequestHeader{
+		Header: &goatorepo.RequestHeader{
 			Method:      method,
 			Headers:     headersFromContext(ctx),
 			Source:      cc.sourceAddress,
@@ -183,8 +183,8 @@ func (cc *ClientConn) asStreamer(
 
 // headersFromContext transforms metadata from the given context into KeyValues
 // which can be used as part of the wrapped header.
-func headersFromContext(ctx context.Context) []*wrapped.KeyValue {
-	h := []*wrapped.KeyValue{}
+func headersFromContext(ctx context.Context) []*goatorepo.KeyValue {
+	h := []*goatorepo.KeyValue{}
 	if md, ok := metadata.FromOutgoingContext(ctx); ok {
 		h = append(h, internal.ToKeyValue(md)...)
 	}
@@ -194,7 +194,7 @@ func headersFromContext(ctx context.Context) []*wrapped.KeyValue {
 		if ms <= 0 {
 			ms = 1
 		}
-		h = append(h, &wrapped.KeyValue{
+		h = append(h, &goatorepo.KeyValue{
 			Key:   "GRPC-Timeout",
 			Value: fmt.Sprintf("%dm", ms),
 		})
