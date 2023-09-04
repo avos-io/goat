@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -249,7 +250,12 @@ func (hrw *httpReadWriter) Write(ctx context.Context, rpc *Rpc) error {
 		return err
 	}
 
-	r, err := http.NewRequest("POST", "http://"+hrw.writeAddr, bytes.NewBuffer(data))
+	scheme := "http"
+	if strings.HasSuffix(hrw.writeAddr, ":443") {
+		scheme = "https"
+	}
+
+	r, err := http.NewRequest("POST", scheme+"://"+hrw.writeAddr, bytes.NewBuffer(data))
 	if err != nil {
 		hrw.cancel()
 		return err

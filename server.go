@@ -218,12 +218,6 @@ func (h *handler) serve() error {
 			return err
 		}
 
-		if rpc.GetHeader().Destination != h.srv.id {
-			log.Error().
-				Msgf("Server %s: invalid destination %s", h.srv.id, rpc.GetHeader().Destination)
-			continue
-		}
-
 		si, known := h.srv.services[service]
 		if !known {
 			log.Error().Msgf("Server: unknown service, %s", service)

@@ -127,7 +127,7 @@ func (p *Proxy) serveClients(ctx context.Context) {
 
 func (p *Proxy) forwardRpc(source string, rpc *wrapped.Rpc) {
 	// Sanity check RPC first
-	if rpc.Header == nil || rpc.Header.Source != source {
+	if rpc.Header == nil {
 		log.Warn().Msgf("Bad Rpc: %v", rpc)
 		log.Panic().Msg("TODO: handle invalid RPC here (log and ignore?)")
 	}
