@@ -6,7 +6,7 @@
 package goat
 
 import (
-	proto "github.com/avos-io/goat/gen/protorepo/goat"
+	proto "github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/types"
 )
 

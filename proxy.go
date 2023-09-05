@@ -8,7 +8,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 
-	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
+	"github.com/avos-io/goat/gen/goatorepo"
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 
 // Is free to modify the passed in header, e.g. changing the Destination.
 // If an error is returned, the RPC is dropped.
-type RpcIntercepter func(hdr *wrapped.RequestHeader) error
+type RpcIntercepter func(hdr *goatorepo.RequestHeader) error
 type NewConnection func(id string) (RpcReadWriter, error)
 type ClientDisconnect func(id string, reason error)
 
@@ -36,7 +36,7 @@ type Proxy struct {
 
 type command struct {
 	id  string
-	rpc *wrapped.Rpc
+	rpc *goatorepo.Rpc
 	err error
 }
 
@@ -44,7 +44,7 @@ type proxyClient struct {
 	id         string
 	conn       RpcReadWriter
 	toServer   chan command
-	fromServer chan *wrapped.Rpc
+	fromServer chan *goatorepo.Rpc
 }
 
 func NewProxy(
@@ -72,7 +72,7 @@ func (p *Proxy) AddClient(id string, conn RpcReadWriter) {
 		id:         id,
 		conn:       conn,
 		toServer:   p.commands,
-		fromServer: make(chan *wrapped.Rpc, clientBufferSize),
+		fromServer: make(chan *goatorepo.Rpc, clientBufferSize),
 	}
 
 	p.mutex.Lock()
@@ -88,7 +88,7 @@ func (p *Proxy) addOutgoingConnectionLocked(id string) *proxyClient {
 	client := &proxyClient{
 		id:         id,
 		toServer:   p.commands,
-		fromServer: make(chan *wrapped.Rpc, clientBufferSize),
+		fromServer: make(chan *goatorepo.Rpc, clientBufferSize),
 	}
 	p.clients[id] = client
 
@@ -125,7 +125,7 @@ func (p *Proxy) serveClients(ctx context.Context) {
 	}
 }
 
-func (p *Proxy) forwardRpc(source string, rpc *wrapped.Rpc) {
+func (p *Proxy) forwardRpc(source string, rpc *goatorepo.Rpc) {
 	// Sanity check RPC first
 	if rpc.Header == nil || rpc.Header.Source != source {
 		log.Warn().Msgf("Bad Rpc: %v", rpc)

@@ -15,8 +15,8 @@ import (
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
 
+	goatorepo "github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/gen/mocks"
-	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/internal"
 )
@@ -45,23 +45,23 @@ func TestHeader(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		is := require.New(t)
 
-		sent := &wrapped.RequestHeader{
+		sent := &goatorepo.RequestHeader{
 			Method: "foo",
-			Headers: []*wrapped.KeyValue{
+			Headers: []*goatorepo.KeyValue{
 				{Key: "1", Value: "one"},
 				{Key: "2", Value: "two"},
 			},
 		}
 
 		rw := mocks.NewRpcReadWriter(t)
-		rw.EXPECT().Read(mock.Anything).Return(&wrapped.Rpc{
+		rw.EXPECT().Read(mock.Anything).Return(&goatorepo.Rpc{
 			Id:     1,
 			Header: sent,
 		}, nil).Once()
-		rw.EXPECT().Read(mock.Anything).Return(&wrapped.Rpc{
+		rw.EXPECT().Read(mock.Anything).Return(&goatorepo.Rpc{
 			Id:      1,
-			Header:  &wrapped.RequestHeader{Method: "foo"},
-			Trailer: &wrapped.Trailer{},
+			Header:  &goatorepo.RequestHeader{Method: "foo"},
+			Trailer: &goatorepo.Trailer{},
 		}, nil).Once()
 
 		stream := NewStream(context.Background(), 1, "", rw, func() {}, "src", "dst")
@@ -92,8 +92,8 @@ func TestTrailer(t *testing.T) {
 	t.Run("Metadata", func(t *testing.T) {
 		is := require.New(t)
 
-		sent := &wrapped.Trailer{
-			Metadata: []*wrapped.KeyValue{
+		sent := &goatorepo.Trailer{
+			Metadata: []*goatorepo.KeyValue{
 				{Key: "0", Value: "jan"},
 				{Key: "1", Value: "feb"},
 				{Key: "2", Value: "mar"},
@@ -101,9 +101,9 @@ func TestTrailer(t *testing.T) {
 		}
 
 		rw := mocks.NewRpcReadWriter(t)
-		rw.EXPECT().Read(mock.Anything).Return(&wrapped.Rpc{
+		rw.EXPECT().Read(mock.Anything).Return(&goatorepo.Rpc{
 			Id:      9,
-			Header:  &wrapped.RequestHeader{Method: "method"},
+			Header:  &goatorepo.RequestHeader{Method: "method"},
 			Trailer: sent,
 		}, nil)
 
@@ -121,10 +121,10 @@ func TestTrailer(t *testing.T) {
 		is := require.New(t)
 
 		rw := mocks.NewRpcReadWriter(t)
-		rw.EXPECT().Read(mock.Anything).Return(&wrapped.Rpc{
+		rw.EXPECT().Read(mock.Anything).Return(&goatorepo.Rpc{
 			Id:      9001,
-			Header:  &wrapped.RequestHeader{Method: "my_method"},
-			Trailer: &wrapped.Trailer{},
+			Header:  &goatorepo.RequestHeader{Method: "my_method"},
+			Trailer: &goatorepo.Trailer{},
 		}, nil)
 
 		stream := NewStream(context.Background(), 0, "", rw, func() {}, "src", "dst")
@@ -149,7 +149,7 @@ func TestCloseSend(t *testing.T) {
 		unblockRead := make(chan time.Time)
 		rw.EXPECT().Read(mock.Anything).WaitUntil(unblockRead).Return(nil, errTest).Maybe()
 		rw.EXPECT().Write(mock.Anything, mock.MatchedBy(
-			func(rpc *wrapped.Rpc) bool {
+			func(rpc *goatorepo.Rpc) bool {
 				return rpc.GetId() == id &&
 					rpc.GetHeader().GetMethod() == method &&
 					rpc.GetStatus().GetCode() == int32(codes.OK) &&
@@ -201,7 +201,7 @@ func TestSendMsg(t *testing.T) {
 		rw.EXPECT().Read(mock.Anything).WaitUntil(unblockRead).Return(nil, errTest).Maybe()
 
 		rw.EXPECT().Write(mock.Anything, mock.MatchedBy(
-			func(rpc *wrapped.Rpc) bool {
+			func(rpc *goatorepo.Rpc) bool {
 				return rpc.GetId() == id &&
 					rpc.GetHeader().GetMethod() == method &&
 					rpc.GetStatus().GetCode() == int32(codes.OK) &&
@@ -278,14 +278,14 @@ func TestSendMsg(t *testing.T) {
 		id := uint64(9001)
 		method := "method"
 
-		recvErr := wrapped.Rpc{
+		recvErr := goatorepo.Rpc{
 			Id:     id,
-			Header: &wrapped.RequestHeader{Method: method},
-			Status: &wrapped.ResponseStatus{
+			Header: &goatorepo.RequestHeader{Method: method},
+			Status: &goatorepo.ResponseStatus{
 				Code:    int32(codes.Internal),
 				Message: codes.Internal.String(),
 			},
-			Trailer: &wrapped.Trailer{},
+			Trailer: &goatorepo.Trailer{},
 		}
 
 		rw.EXPECT().Read(mock.Anything).Return(&recvErr, nil).Once()
@@ -328,21 +328,21 @@ func TestRecvMsg(t *testing.T) {
 		msgBytes, err := encoding.GetCodec(proto.Name).Marshal(&msg)
 		is.NoError(err)
 
-		rpc := &wrapped.Rpc{
+		rpc := &goatorepo.Rpc{
 			Id: 42,
-			Header: &wrapped.RequestHeader{
+			Header: &goatorepo.RequestHeader{
 				Method: "method",
 			},
-			Body: &wrapped.Body{
+			Body: &goatorepo.Body{
 				Data: msgBytes,
 			},
 		}
-		tr := &wrapped.Rpc{
+		tr := &goatorepo.Rpc{
 			Id: 42,
-			Header: &wrapped.RequestHeader{
+			Header: &goatorepo.RequestHeader{
 				Method: "method",
 			},
-			Trailer: &wrapped.Trailer{},
+			Trailer: &goatorepo.Trailer{},
 		}
 
 		rw.EXPECT().Read(mock.Anything).Return(rpc, nil).Once()
@@ -384,14 +384,14 @@ func TestRecvMsg(t *testing.T) {
 		rw := mocks.NewRpcReadWriter(t)
 		stream := NewStream(context.Background(), 42, "method", rw, func() {}, "src", "dst")
 
-		recvErr := wrapped.Rpc{
+		recvErr := goatorepo.Rpc{
 			Id:     42,
-			Header: &wrapped.RequestHeader{Method: "method"},
-			Status: &wrapped.ResponseStatus{
+			Header: &goatorepo.RequestHeader{Method: "method"},
+			Status: &goatorepo.ResponseStatus{
 				Code:    int32(codes.Internal),
 				Message: codes.Internal.String(),
 			},
-			Trailer: &wrapped.Trailer{},
+			Trailer: &goatorepo.Trailer{},
 		}
 
 		readDone := make(chan struct{})

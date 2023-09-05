@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 
-	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
+	"github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/gen/testproto/mocks"
 	"github.com/avos-io/goat/internal/testutil"
@@ -159,9 +159,9 @@ func TestServerStream(t *testing.T) {
 
 		// Open stream
 		conn.ReadChan <- testutil.ReadReturn{
-			Rpc: &wrapped.Rpc{
+			Rpc: &goatorepo.Rpc{
 				Id: id,
-				Header: &wrapped.RequestHeader{
+				Header: &goatorepo.RequestHeader{
 					Method:      method,
 					Source:      "c0",
 					Destination: "s0",
@@ -175,18 +175,18 @@ func TestServerStream(t *testing.T) {
 
 		// CloseSend
 		conn.ReadChan <- testutil.ReadReturn{
-			Rpc: &wrapped.Rpc{
+			Rpc: &goatorepo.Rpc{
 				Id: id,
-				Header: &wrapped.RequestHeader{
+				Header: &goatorepo.RequestHeader{
 					Method:      method,
 					Source:      "c0",
 					Destination: "s0",
 				},
-				Status: &wrapped.ResponseStatus{
+				Status: &goatorepo.ResponseStatus{
 					Code:    int32(codes.OK),
 					Message: codes.OK.String(),
 				},
-				Trailer: &wrapped.Trailer{},
+				Trailer: &goatorepo.Trailer{},
 			},
 			Err: nil,
 		}
@@ -230,14 +230,14 @@ func TestServerStream(t *testing.T) {
 		// stream, most likely a client 'reconnecting' to a different server than
 		// the one which it previously had a running stream with.
 		conn.ReadChan <- testutil.ReadReturn{
-			Rpc: &wrapped.Rpc{
+			Rpc: &goatorepo.Rpc{
 				Id: id,
-				Header: &wrapped.RequestHeader{
+				Header: &goatorepo.RequestHeader{
 					Method:      method,
 					Source:      src,
 					Destination: dst,
 				},
-				Body: &wrapped.Body{Data: []byte{'u', 'h', 'o', 'h'}},
+				Body: &goatorepo.Body{Data: []byte{'u', 'h', 'o', 'h'}},
 			},
 			Err: nil,
 		}
@@ -323,7 +323,7 @@ func waitTimeout(t *testing.T, on chan struct{}) {
 	}
 }
 
-func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg, src, dst string) *wrapped.Rpc {
+func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg, src, dst string) *goatorepo.Rpc {
 	codec := encoding.GetCodec(proto.Name)
 
 	body, err := codec.Marshal(msg)
@@ -331,19 +331,19 @@ func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg, src, dst string) 
 		panic(err)
 	}
 
-	rpc := &wrapped.Rpc{
+	rpc := &goatorepo.Rpc{
 		Id: id,
-		Header: &wrapped.RequestHeader{
+		Header: &goatorepo.RequestHeader{
 			Method:      fullMethod,
 			Source:      src,
 			Destination: dst,
 		},
-		Body: &wrapped.Body{Data: body},
+		Body: &goatorepo.Body{Data: body},
 	}
 	return rpc
 }
 
-func unwrapBody(rpc *wrapped.Rpc) *testproto.Msg {
+func unwrapBody(rpc *goatorepo.Rpc) *testproto.Msg {
 	codec := encoding.GetCodec(proto.Name)
 
 	if rpc.GetBody() == nil {

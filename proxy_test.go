@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/avos-io/goat"
+	"github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/gen/mocks"
-	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/internal/testutil"
 	"github.com/stretchr/testify/mock"
@@ -69,15 +69,15 @@ func (p *oneToOneProxy) forward(from, to goat.RpcReadWriter) {
 type manyToOneProxy struct {
 	mutex        sync.Mutex
 	backend      goat.RpcReadWriter
-	clientInput  chan *wrapped.Rpc
-	clientOutput map[string]chan *wrapped.Rpc
+	clientInput  chan *goatorepo.Rpc
+	clientOutput map[string]chan *goatorepo.Rpc
 }
 
 func newManyToOneProxy(backend goat.RpcReadWriter) *manyToOneProxy {
 	p := &manyToOneProxy{
 		backend:      backend,
-		clientInput:  make(chan *wrapped.Rpc),
-		clientOutput: make(map[string]chan *wrapped.Rpc),
+		clientInput:  make(chan *goatorepo.Rpc),
+		clientOutput: make(map[string]chan *goatorepo.Rpc),
 	}
 	go p.serveWrites()
 	go p.serveReads()
@@ -122,7 +122,7 @@ func (p *manyToOneProxy) serveReads() {
 }
 
 func (p *manyToOneProxy) AddClient(id string, c goat.RpcReadWriter) {
-	myChan := make(chan *wrapped.Rpc)
+	myChan := make(chan *goatorepo.Rpc)
 
 	p.mutex.Lock()
 	p.clientOutput[id] = myChan
@@ -324,7 +324,7 @@ func TestRealProxy(t *testing.T) {
 
 			return nil, fmt.Errorf("invalid ID to connect to")
 		},
-		func(hdr *wrapped.RequestHeader) error {
+		func(hdr *goatorepo.RequestHeader) error {
 			if hdr.Destination == serviceName {
 				// It would be reasonable to look up client metadata like org at this
 				// point. Assuming we save such on client connection, then it could
@@ -373,7 +373,7 @@ func TestContextCancelled(t *testing.T) {
 		func(id string) (goat.RpcReadWriter, error) {
 			return nil, errors.New("You fool")
 		},
-		func(hdr *wrapped.RequestHeader) error { return nil },
+		func(hdr *goatorepo.RequestHeader) error { return nil },
 		func(id string, reason error) {},
 	)
 
@@ -381,9 +381,9 @@ func TestContextCancelled(t *testing.T) {
 
 	go p.Serve()
 
-	client1Write <- &wrapped.Rpc{
+	client1Write <- &goatorepo.Rpc{
 		Id: 1,
-		Header: &wrapped.RequestHeader{
+		Header: &goatorepo.RequestHeader{
 			Source:      clientAddress1,
 			Destination: clientAddress1,
 		},
@@ -399,9 +399,9 @@ func TestContextCancelled(t *testing.T) {
 	cancel()
 
 	select {
-	case client1Write <- &wrapped.Rpc{
+	case client1Write <- &goatorepo.Rpc{
 		Id: 2,
-		Header: &wrapped.RequestHeader{
+		Header: &goatorepo.RequestHeader{
 			Source:      clientAddress1,
 			Destination: clientAddress1,
 		},
@@ -439,7 +439,7 @@ func TestReadErrorClosesBothLoops(t *testing.T) {
 		func(id string) (goat.RpcReadWriter, error) {
 			return nil, errors.New("You fool")
 		},
-		func(hdr *wrapped.RequestHeader) error { return nil },
+		func(hdr *goatorepo.RequestHeader) error { return nil },
 		func(id string, reason error) {},
 	)
 
@@ -448,9 +448,9 @@ func TestReadErrorClosesBothLoops(t *testing.T) {
 
 	go p.Serve()
 
-	client2Write <- &wrapped.Rpc{
+	client2Write <- &goatorepo.Rpc{
 		Id: 1,
-		Header: &wrapped.RequestHeader{
+		Header: &goatorepo.RequestHeader{
 			Source:      clientAddress2,
 			Destination: clientAddress1,
 		},
@@ -487,7 +487,7 @@ func TestUnresponsiveClient(t *testing.T) {
 			println("Asking to connect to ", id)
 			return nil, errors.New("You fool")
 		},
-		func(hdr *wrapped.RequestHeader) error { return nil },
+		func(hdr *goatorepo.RequestHeader) error { return nil },
 		func(id string, reason error) {},
 	)
 
@@ -498,25 +498,25 @@ func TestUnresponsiveClient(t *testing.T) {
 
 	go func() {
 
-		client1Write <- &wrapped.Rpc{
+		client1Write <- &goatorepo.Rpc{
 			Id: 1,
-			Header: &wrapped.RequestHeader{
+			Header: &goatorepo.RequestHeader{
 				Source:      clientAddress1,
 				Destination: clientAddress2,
 			},
 		}
 
-		client1Write <- &wrapped.Rpc{
+		client1Write <- &goatorepo.Rpc{
 			Id: 2,
-			Header: &wrapped.RequestHeader{
+			Header: &goatorepo.RequestHeader{
 				Source:      clientAddress1,
 				Destination: clientAddress2,
 			},
 		}
 
-		client1Write <- &wrapped.Rpc{
+		client1Write <- &goatorepo.Rpc{
 			Id: 3,
-			Header: &wrapped.RequestHeader{
+			Header: &goatorepo.RequestHeader{
 				Source:      clientAddress1,
 				Destination: clientAddress1,
 			},

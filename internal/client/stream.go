@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
+	goatorepo "github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/internal"
 	"github.com/avos-io/goat/types"
 )
@@ -41,12 +41,12 @@ type clientStream struct {
 		headerErr error
 		eErr      error
 		rErr      error
-		trailer   *wrapped.Trailer
+		trailer   *goatorepo.Trailer
 	}
 
 	teardown func()
 
-	rCh chan *wrapped.Body
+	rCh chan *goatorepo.Body
 }
 
 var _ grpc.ClientStream = (*clientStream)(nil)
@@ -74,7 +74,7 @@ func NewStream(
 		codec:         encoding.GetCodec(proto.Name),
 		rw:            rw,
 		teardown:      csteardown,
-		rCh:           make(chan *wrapped.Body),
+		rCh:           make(chan *goatorepo.Body),
 		sourceAddress: sourceAddress,
 		destAddress:   destAddress,
 	}
@@ -118,18 +118,18 @@ func (cs *clientStream) Trailer() metadata.MD {
 // when non-nil error is met. It is also not safe to call CloseSend
 // concurrently with SendMsg.
 func (cs *clientStream) CloseSend() error {
-	tr := wrapped.Rpc{
+	tr := goatorepo.Rpc{
 		Id: cs.id,
-		Header: &wrapped.RequestHeader{
+		Header: &goatorepo.RequestHeader{
 			Method:      cs.method,
 			Source:      cs.sourceAddress,
 			Destination: cs.destAddress,
 		},
-		Status: &wrapped.ResponseStatus{
+		Status: &goatorepo.ResponseStatus{
 			Code:    int32(codes.OK),
 			Message: codes.OK.String(),
 		},
-		Trailer: &wrapped.Trailer{},
+		Trailer: &goatorepo.Trailer{},
 	}
 
 	return cs.rw.Write(cs.ctx, &tr)
@@ -168,14 +168,14 @@ func (cs *clientStream) SendMsg(m interface{}) error {
 		cs.teardown()
 		return err
 	}
-	rpc := wrapped.Rpc{
+	rpc := goatorepo.Rpc{
 		Id: cs.id,
-		Header: &wrapped.RequestHeader{
+		Header: &goatorepo.RequestHeader{
 			Method:      cs.method,
 			Source:      cs.sourceAddress,
 			Destination: cs.destAddress,
 		},
-		Body: &wrapped.Body{
+		Body: &goatorepo.Body{
 			Data: body,
 		},
 	}
@@ -226,7 +226,7 @@ func (cs *clientStream) readLoop() error {
 	log.Info().Uint64("id", cs.id).Msg("ClientStream started")
 
 	var rErr error
-	var trailer *wrapped.Trailer
+	var trailer *goatorepo.Trailer
 
 	defer func() {
 		cs.protected.Lock()
@@ -312,7 +312,7 @@ func toStatusError(err error) error {
 
 // errorIfDone returns a grpc/status compatible error if the given RPC is the
 // last RPC in the stream.
-func errorIfDone(rpc *wrapped.Rpc) (bool, error) {
+func errorIfDone(rpc *goatorepo.Rpc) (bool, error) {
 	if rpc.Trailer == nil {
 		return false, nil
 	}

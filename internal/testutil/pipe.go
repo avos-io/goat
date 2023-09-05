@@ -7,7 +7,7 @@ import (
 	"net"
 	"sync"
 
-	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
+	goatorepo "github.com/avos-io/goat/gen/goatorepo"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -21,7 +21,7 @@ func NewGoatOverPipe(c net.Conn) *goatOverPipe {
 	return &goatOverPipe{conn: c}
 }
 
-func (g *goatOverPipe) Read(ctx context.Context) (*wrapped.Rpc, error) {
+func (g *goatOverPipe) Read(ctx context.Context) (*goatorepo.Rpc, error) {
 	g.readMutex.Lock()
 	defer g.readMutex.Unlock()
 
@@ -37,7 +37,7 @@ func (g *goatOverPipe) Read(ctx context.Context) (*wrapped.Rpc, error) {
 		panic(err)
 	}
 
-	var rpc wrapped.Rpc
+	var rpc goatorepo.Rpc
 	err = proto.Unmarshal(data, &rpc)
 	if err != nil {
 		panic(err)
@@ -46,7 +46,7 @@ func (g *goatOverPipe) Read(ctx context.Context) (*wrapped.Rpc, error) {
 	return &rpc, nil
 }
 
-func (g *goatOverPipe) Write(ctx context.Context, pkt *wrapped.Rpc) error {
+func (g *goatOverPipe) Write(ctx context.Context, pkt *goatorepo.Rpc) error {
 	g.writeMutex.Lock()
 	defer g.writeMutex.Unlock()
 

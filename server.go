@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
+	"github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/internal"
 	"github.com/avos-io/goat/internal/server"
 )
@@ -130,7 +130,7 @@ func (s *Server) Serve(rw RpcReadWriter) error {
 type unaryRpcArgs struct {
 	info *serviceInfo
 	md   *grpc.MethodDesc
-	rpc  *wrapped.Rpc
+	rpc  *goatorepo.Rpc
 }
 
 // handler for a specific goat.RpcReadWriter
@@ -144,9 +144,9 @@ type handler struct {
 	codec encoding.Codec
 
 	mu      sync.Mutex // protects streams
-	streams map[uint64]chan *wrapped.Rpc
+	streams map[uint64]chan *goatorepo.Rpc
 
-	writeChan    chan *wrapped.Rpc
+	writeChan    chan *goatorepo.Rpc
 	unaryRpcChan chan unaryRpcArgs
 }
 
@@ -159,8 +159,8 @@ func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
 		srv:          srv,
 		rw:           rw,
 		codec:        encoding.GetCodec(proto.Name),
-		streams:      map[uint64]chan *wrapped.Rpc{},
-		writeChan:    make(chan *wrapped.Rpc),
+		streams:      map[uint64]chan *goatorepo.Rpc{},
+		writeChan:    make(chan *goatorepo.Rpc),
 		unaryRpcChan: make(chan unaryRpcArgs),
 	}
 }
@@ -244,8 +244,8 @@ func (h *handler) serve() error {
 func (h *handler) processUnaryRpc(
 	info *serviceInfo,
 	md *grpc.MethodDesc,
-	rpc *wrapped.Rpc,
-) *wrapped.Rpc {
+	rpc *goatorepo.Rpc,
+) *goatorepo.Rpc {
 	ctx := context.Background()
 
 	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
@@ -274,7 +274,7 @@ func (h *handler) processUnaryRpc(
 	resp, appErr := md.Handler(info.serviceImpl, ctx, dec, h.srv.unaryInterceptor)
 
 	respH := internal.ToKeyValue(sts.GetHeaders())
-	respHeader := &wrapped.RequestHeader{
+	respHeader := &goatorepo.RequestHeader{
 		Method:      fullMethod,
 		Headers:     respH,
 		Source:      rpc.Header.Destination,
@@ -283,37 +283,37 @@ func (h *handler) processUnaryRpc(
 	if len(rpc.Header.ProxyRecord) > 1 {
 		respHeader.ProxyNext = rpc.Header.ProxyRecord[0 : len(rpc.Header.ProxyRecord)-1]
 	}
-	respTrailer := &wrapped.Trailer{
+	respTrailer := &goatorepo.Trailer{
 		Metadata: internal.ToKeyValue(sts.GetTrailers()),
 	}
 
-	var respStatus *wrapped.ResponseStatus
+	var respStatus *goatorepo.ResponseStatus
 
 	if appErr != nil {
 		st, ok := status.FromError(appErr)
 		if !ok {
 			st = status.FromContextError(appErr)
 		}
-		respStatus = &wrapped.ResponseStatus{
+		respStatus = &goatorepo.ResponseStatus{
 			Code:    st.Proto().GetCode(),
 			Message: st.Proto().GetMessage(),
 			Details: st.Proto().GetDetails(),
 		}
 	}
 
-	var respBody *wrapped.Body
+	var respBody *goatorepo.Body
 
 	if resp != nil {
 		data, err := h.codec.Marshal(resp)
 
 		if err == nil {
-			respBody = &wrapped.Body{
+			respBody = &goatorepo.Body{
 				Data: data,
 			}
 		}
 	}
 
-	return &wrapped.Rpc{
+	return &goatorepo.Rpc{
 		Id:      rpc.GetId(),
 		Header:  respHeader,
 		Status:  respStatus,
@@ -325,7 +325,7 @@ func (h *handler) processUnaryRpc(
 func (h *handler) processStreamingRpc(
 	info *serviceInfo,
 	sd *grpc.StreamDesc,
-	rpc *wrapped.Rpc,
+	rpc *goatorepo.Rpc,
 ) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -336,7 +336,7 @@ func (h *handler) processStreamingRpc(
 	}
 
 	streamId := rpc.Id
-	ch := make(chan *wrapped.Rpc, 1)
+	ch := make(chan *goatorepo.Rpc, 1)
 	h.streams[streamId] = ch
 
 	go h.runStream(info, sd, rpc, streamId, ch)
@@ -346,9 +346,9 @@ func (h *handler) processStreamingRpc(
 func (h *handler) runStream(
 	info *serviceInfo,
 	sd *grpc.StreamDesc,
-	rpc *wrapped.Rpc,
+	rpc *goatorepo.Rpc,
 	streamId uint64,
-	rCh chan *wrapped.Rpc,
+	rCh chan *goatorepo.Rpc,
 ) error {
 	defer h.unregisterStream(streamId)
 
@@ -368,7 +368,7 @@ func (h *handler) runStream(
 		return nil
 	}
 
-	r := func(ctx context.Context) (*wrapped.Rpc, error) {
+	r := func(ctx context.Context) (*goatorepo.Rpc, error) {
 		select {
 		case msg, ok := <-rCh:
 			if !ok {
@@ -379,7 +379,7 @@ func (h *handler) runStream(
 			return nil, ctx.Err()
 		}
 	}
-	rw := internal.NewFnReadWriter(r, func(ctx context.Context, r *wrapped.Rpc) error {
+	rw := internal.NewFnReadWriter(r, func(ctx context.Context, r *goatorepo.Rpc) error {
 		h.writeChan <- r
 		return nil
 	})
@@ -441,19 +441,19 @@ func (h *handler) unregisterStream(id uint64) {
 
 // resetStream instructs the caller to tear down and restart the stream. We call
 // this if something has gone irrecoverably wrong in the stream.
-func (h *handler) resetStream(rpc *wrapped.Rpc) {
-	reset := &wrapped.Rpc{
+func (h *handler) resetStream(rpc *goatorepo.Rpc) {
+	reset := &goatorepo.Rpc{
 		Id: rpc.GetId(),
-		Header: &wrapped.RequestHeader{
+		Header: &goatorepo.RequestHeader{
 			Method:      rpc.GetHeader().GetMethod(),
 			Source:      rpc.GetHeader().GetDestination(),
 			Destination: rpc.GetHeader().GetSource(),
 		},
-		Status: &wrapped.ResponseStatus{
+		Status: &goatorepo.ResponseStatus{
 			Code:    int32(codes.Aborted),
 			Message: "RST stream",
 		},
-		Trailer: &wrapped.Trailer{},
+		Trailer: &goatorepo.Trailer{},
 	}
 
 	if len(rpc.Header.ProxyRecord) > 1 {
@@ -468,7 +468,7 @@ func (h *handler) resetStream(rpc *wrapped.Rpc) {
 // is used to set the deadline on the returned context.
 func contextFromHeaders(
 	parent context.Context,
-	h *wrapped.RequestHeader,
+	h *goatorepo.RequestHeader,
 ) (context.Context, context.CancelFunc, error) {
 	cancel := func() {}
 	md, err := internal.ToMetadata(h.Headers)
