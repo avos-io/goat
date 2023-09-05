@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/status"
 
+	goatorepo "github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/gen/mocks"
-	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/internal/client"
 )
@@ -27,24 +27,24 @@ type testConn struct {
 }
 
 type readReturn struct {
-	rpc *wrapped.Rpc
+	rpc *goatorepo.Rpc
 	err error
 }
 
-func (c *testConn) Read(ctx context.Context) (*wrapped.Rpc, error) {
+func (c *testConn) Read(ctx context.Context) (*goatorepo.Rpc, error) {
 	args := c.Called(ctx)
 	ch := args.Get(0).(chan readReturn)
 	rr := <-ch
 	return rr.rpc, rr.err
 }
 
-func (c *testConn) Write(ctx context.Context, rpc *wrapped.Rpc) error {
+func (c *testConn) Write(ctx context.Context, rpc *goatorepo.Rpc) error {
 	args := c.Called(ctx, rpc)
 	err := args.Error(0)
 	return err
 }
 
-func makeResponse(id uint64, args interface{}) *wrapped.Rpc {
+func makeResponse(id uint64, args interface{}) *goatorepo.Rpc {
 	codec := encoding.GetCodec(proto.Name)
 
 	body, err := codec.Marshal(args)
@@ -52,14 +52,14 @@ func makeResponse(id uint64, args interface{}) *wrapped.Rpc {
 		panic(err)
 	}
 
-	return &wrapped.Rpc{
+	return &goatorepo.Rpc{
 		Id:   id,
-		Body: &wrapped.Body{Data: body},
+		Body: &goatorepo.Body{Data: body},
 	}
 }
 
-func makeErrorResponse(id uint64, status *wrapped.ResponseStatus) *wrapped.Rpc {
-	return &wrapped.Rpc{
+func makeErrorResponse(id uint64, status *goatorepo.ResponseStatus) *goatorepo.Rpc {
+	return &goatorepo.Rpc{
 		Id:     id,
 		Status: status,
 	}
@@ -81,10 +81,10 @@ func TestUnaryMethodSuccess(t *testing.T) {
 
 	valBytes, err := rm.CallUnaryMethod(
 		context.Background(),
-		&wrapped.RequestHeader{
+		&goatorepo.RequestHeader{
 			Method: "sam",
 		},
-		&wrapped.Body{})
+		&goatorepo.Body{})
 
 	assert.NoError(t, err)
 
@@ -107,7 +107,7 @@ func TestUnaryMethodFailure(t *testing.T) {
 			readChan <- readReturn{
 				makeErrorResponse(
 					1,
-					&wrapped.ResponseStatus{
+					&goatorepo.ResponseStatus{
 						Code:    int32(codes.InvalidArgument),
 						Message: "Hello world"},
 				),
@@ -120,10 +120,10 @@ func TestUnaryMethodFailure(t *testing.T) {
 
 	valBytes, err := rm.CallUnaryMethod(
 		context.Background(),
-		&wrapped.RequestHeader{
+		&goatorepo.RequestHeader{
 			Method: "sam",
 		},
-		&wrapped.Body{})
+		&goatorepo.Body{})
 
 	assert.Nil(t, valBytes)
 	assert.Error(t, err)
@@ -141,7 +141,7 @@ func TestUnaryMethodFailureDespiteBody(t *testing.T) {
 	readChan := make(chan readReturn)
 
 	resp := makeResponse(1, &testproto.Msg{Value: 42})
-	resp.Status = &wrapped.ResponseStatus{
+	resp.Status = &goatorepo.ResponseStatus{
 		Code:    int32(codes.InvalidArgument),
 		Message: "My status is telling me no... but my body... my body...",
 	}
@@ -157,10 +157,10 @@ func TestUnaryMethodFailureDespiteBody(t *testing.T) {
 
 	valBytes, err := rm.CallUnaryMethod(
 		context.Background(),
-		&wrapped.RequestHeader{
+		&goatorepo.RequestHeader{
 			Method: "yes",
 		},
-		&wrapped.Body{},
+		&goatorepo.Body{},
 	)
 
 	is := require.New(t)
@@ -185,16 +185,16 @@ func TestUnaryMethodFailureChannelClosed(t *testing.T) {
 
 	rw.EXPECT().Read(mock.Anything).WaitUntil(waitingOnReply).Return(nil, errTest)
 	rw.EXPECT().Write(mock.Anything, mock.Anything).Return(nil).
-		Run(func(_a0 context.Context, _a1 *wrapped.Rpc) {
+		Run(func(_a0 context.Context, _a1 *goatorepo.Rpc) {
 			waitingOnReply <- time.Now()
 		})
 
 	ret, err := rm.CallUnaryMethod(
 		context.Background(),
-		&wrapped.RequestHeader{
+		&goatorepo.RequestHeader{
 			Method: "test",
 		},
-		&wrapped.Body{},
+		&goatorepo.Body{},
 	)
 
 	is := require.New(t)
@@ -218,12 +218,12 @@ func TestNewStreamReadWriter(t *testing.T) {
 		defer teardown()
 
 		ctx := context.Background()
-		rpc := &wrapped.Rpc{
+		rpc := &goatorepo.Rpc{
 			Id: id,
-			Header: &wrapped.RequestHeader{
+			Header: &goatorepo.RequestHeader{
 				Method: "method",
 			},
-			Body: &wrapped.Body{
+			Body: &goatorepo.Body{
 				Data: []byte{1, 2, 3, 4},
 			},
 		}
@@ -250,12 +250,12 @@ func TestNewStreamReadWriter(t *testing.T) {
 
 		defer teardown()
 
-		rpc := &wrapped.Rpc{
+		rpc := &goatorepo.Rpc{
 			Id: id,
-			Header: &wrapped.RequestHeader{
+			Header: &goatorepo.RequestHeader{
 				Method: "method",
 			},
-			Body: &wrapped.Body{
+			Body: &goatorepo.Body{
 				Data: []byte{1, 2, 3, 4},
 			},
 		}
@@ -283,16 +283,16 @@ func TestNewStreamReadWriter(t *testing.T) {
 
 		defer teardown()
 
-		readChan <- readReturn{&wrapped.Rpc{Id: 9001}, nil}
-		readChan <- readReturn{&wrapped.Rpc{Id: 9002}, nil}
-		readChan <- readReturn{&wrapped.Rpc{Id: 9003}, nil}
+		readChan <- readReturn{&goatorepo.Rpc{Id: 9001}, nil}
+		readChan <- readReturn{&goatorepo.Rpc{Id: 9002}, nil}
+		readChan <- readReturn{&goatorepo.Rpc{Id: 9003}, nil}
 
-		rpc := &wrapped.Rpc{
+		rpc := &goatorepo.Rpc{
 			Id: id,
-			Header: &wrapped.RequestHeader{
+			Header: &goatorepo.RequestHeader{
 				Method: "method",
 			},
-			Body: &wrapped.Body{
+			Body: &goatorepo.Body{
 				Data: []byte{1, 2, 3, 4},
 			},
 		}

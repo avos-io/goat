@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/avos-io/goat"
-	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
+	"github.com/avos-io/goat/gen/goatorepo"
 )
 
 func TestDemuxSource(t *testing.T) {
@@ -37,9 +37,9 @@ func TestDemuxSource(t *testing.T) {
 
 		for i := 0; i < 10; i++ {
 			client := fmt.Sprintf("client%d", i)
-			rpc := &wrapped.Rpc{
+			rpc := &goatorepo.Rpc{
 				Id: 1,
-				Header: &wrapped.RequestHeader{
+				Header: &goatorepo.RequestHeader{
 					Source: client,
 				},
 			}
@@ -81,9 +81,9 @@ func TestDemuxSource(t *testing.T) {
 		var c goat.RpcReadWriter
 
 		for i := 1; i < 10; i++ {
-			rpc := &wrapped.Rpc{
+			rpc := &goatorepo.Rpc{
 				Id: uint64(i),
-				Header: &wrapped.RequestHeader{
+				Header: &goatorepo.RequestHeader{
 					Source: client,
 				},
 			}

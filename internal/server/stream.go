@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	wrapped "github.com/avos-io/goat/gen/protorepo/goat"
+	goatorepo "github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/internal"
 	"github.com/avos-io/goat/types"
 )
@@ -94,9 +94,9 @@ func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
 		return nil
 	}
 
-	rpc := wrapped.Rpc{
+	rpc := goatorepo.Rpc{
 		Id: ss.id,
-		Header: &wrapped.RequestHeader{
+		Header: &goatorepo.RequestHeader{
 			Method:      ss.method,
 			Source:      ss.src,
 			Destination: ss.dst,
@@ -157,14 +157,14 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 		return err
 	}
 
-	rpc := wrapped.Rpc{
+	rpc := goatorepo.Rpc{
 		Id: ss.id,
-		Header: &wrapped.RequestHeader{
+		Header: &goatorepo.RequestHeader{
 			Method:      ss.method,
 			Source:      ss.src,
 			Destination: ss.dst,
 		},
-		Body: &wrapped.Body{
+		Body: &goatorepo.Body{
 			Data: body,
 		},
 	}
@@ -234,18 +234,18 @@ func (ss *serverStream) SendTrailer(trErr error) error {
 	}
 	ss.protected.trailersSent = true
 
-	tr := wrapped.Rpc{
+	tr := goatorepo.Rpc{
 		Id: ss.id,
-		Header: &wrapped.RequestHeader{
+		Header: &goatorepo.RequestHeader{
 			Method:      ss.method,
 			Source:      ss.src,
 			Destination: ss.dst,
 		},
-		Status: &wrapped.ResponseStatus{
+		Status: &goatorepo.ResponseStatus{
 			Code:    int32(codes.OK),
 			Message: codes.OK.String(),
 		},
-		Trailer: &wrapped.Trailer{
+		Trailer: &goatorepo.Trailer{
 			Metadata: internal.ToKeyValue(ss.protected.trailers...),
 		},
 	}
