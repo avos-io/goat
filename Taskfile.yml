@@ -39,11 +39,11 @@ tasks:
       cmds:
         - >-
           docker run --rm 
-          --volume "$(pwd):/workspace" 
-          --workdir /workspace 
+          --volume "$(pwd):/goat" 
+          --workdir /goat 
           {{if eq OS "linux"}}
           --user $(id -u):$(id -g) 
-          --env XDG_CACHE_HOME=/workspace 
+          --env XDG_CACHE_HOME=/goat 
           {{end}} 
           bufbuild/buf generate .
         - touch gen/proto.touch
