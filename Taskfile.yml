@@ -36,16 +36,19 @@ tasks:
       - rm -fr gen/*
 
   gen-proto:
-    env:
-      DISABLE_REQUIRE_UNIMPLEMENTED_SERVERS: 1
-    cmds:
-      - bash protobuild.sh
-      - touch gen/proto.touch
-    generates:
+      cmds:
+        - >-
+          docker run --rm 
+          --volume "$(pwd):/workspace" 
+          --workdir /workspace 
+          {{if eq OS "linux"}}
+          --user $(id -u):$(id -g) 
+          --env XDG_CACHE_HOME=/workspace 
+          {{end}} 
+          bufbuild/buf generate .
+        - touch gen/proto.touch
+      generates:
       - gen/proto.touch
-    sources:
-      - protobuild.sh
-      - "goatorepo/*.proto"
 
   gen-mocks:
     deps: [gen-proto]
