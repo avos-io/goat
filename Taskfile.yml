@@ -38,13 +38,13 @@ tasks:
   gen-proto:
       cmds:
         - >-
-          docker run --rm 
-          --volume "$(pwd):/goat" 
-          --workdir /goat 
+          docker run --rm
+          --volume "$(pwd):/goat"
+          --workdir /goat
           {{if eq OS "linux"}}
-          --user $(id -u):$(id -g) 
-          --env XDG_CACHE_HOME=/goat 
-          {{end}} 
+          --user $(id -u):$(id -g)
+          --env XDG_CACHE_HOME=/goat
+          {{end}}
           bufbuild/buf generate .
         - touch gen/proto.touch
       generates:
