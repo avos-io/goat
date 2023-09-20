@@ -2,6 +2,7 @@ version: '3'
 method: timestamp
 run: once
 
+
 tasks:
   default:
     deps: [test]
@@ -11,6 +12,8 @@ tasks:
       Run any generate actions. Useful to run to make an IDE happy.
     deps:
       - task: gen-proto
+        vars:
+          GOAT_BUF_WORK_DIR: '{{default "workspace" .GOAT_BUF_WORK_DIR}}'
       - task: gen-mocks
 
   test:
@@ -36,19 +39,19 @@ tasks:
       - rm -fr gen/*
 
   gen-proto:
-      cmds:
-        - >-
-          docker run --rm
-          --volume "{{.ROOT_DIR}}:/workspace"
-          --workdir /workspace
-          {{if eq OS "linux"}}
-          --user $(id -u):$(id -g)
-          --env XDG_CACHE_HOME=/workspace
-          {{end}}
-          bufbuild/buf generate .
-        - touch gen/proto.touch
-      generates:
-      - gen/proto.touch
+    cmds:
+      - >-
+        docker run --rm
+        --volume "{{.ROOT_DIR}}:/workspace"
+        --workdir /{{default "workspace" .GOAT_BUF_WORK_DIR}}
+        {{if eq OS "linux"}}
+        --user $(id -u):$(id -g)
+        --env XDG_CACHE_HOME=/workspace
+        {{end}}
+        bufbuild/buf generate .
+      - touch gen/proto.touch
+    generates:
+    - gen/proto.touch
 
   gen-mocks:
     deps: [gen-proto]
