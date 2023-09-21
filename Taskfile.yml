@@ -12,8 +12,6 @@ tasks:
       Run any generate actions. Useful to run to make an IDE happy.
     deps:
       - task: gen-proto
-        vars:
-          GOAT_BUF_WORK_DIR: '{{default "workspace" .GOAT_BUF_WORK_DIR}}'
       - task: gen-mocks
 
   test:
@@ -42,7 +40,7 @@ tasks:
     cmds:
       - >-
         docker run --rm
-        --volume "{{.ROOT_DIR}}:/workspace"
+        --volume "$(pwd):/workspace"
         --workdir /{{default "workspace" .GOAT_BUF_WORK_DIR}}
         {{if eq OS "linux"}}
         --user $(id -u):$(id -g)
