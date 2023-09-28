@@ -42,11 +42,13 @@ tasks:
       - rm -fr gen/*
 
   gen-proto:
-    cmds:
+  vars:
+    GOAT_BUF_WORK_DIR: '{{default "workspace" .GOAT_BUF_WORK_DIR}}'
+    cmds: 
       - >-
         docker run --rm
         --volume "{{.ROOT_DIR}}:/workspace"
-        --workdir /{{default "workspace" .GOAT_BUF_WORK_DIR}}
+        --workdir /{{.GOAT_BUF_WORK_DIR}}
         {{if eq OS "linux"}}
         --user $(id -u):$(id -g)
         --env XDG_CACHE_HOME=/workspace
@@ -55,7 +57,7 @@ tasks:
       - >-
         docker run --rm
         --volume "{{.ROOT_DIR}}:/workspace"
-        --workdir /{{default "workspace" .GOAT_BUF_WORK_DIR}}
+        --workdir /{{.GOAT_BUF_WORK_DIR}}
         {{if eq OS "linux"}}
         --user $(id -u):$(id -g)
         --env XDG_CACHE_HOME=/workspace
