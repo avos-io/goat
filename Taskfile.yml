@@ -46,7 +46,7 @@ tasks:
         --user $(id -u):$(id -g)
         --env XDG_CACHE_HOME=/workspace
         {{end}}
-        bufbuild/buf mod update .
+        bufbuild/buf mod update
       - >-
         docker run --rm
         --volume "$(pwd):/workspace"
