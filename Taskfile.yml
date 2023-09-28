@@ -64,7 +64,7 @@ tasks:
         bufbuild/buf generate .
       - touch gen/proto.touch
     generates:
-    - gen/proto.touch
+      - gen/proto.touch
 
   gen-mocks:
     deps: [gen-proto]
