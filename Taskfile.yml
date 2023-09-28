@@ -40,20 +40,20 @@ tasks:
     cmds:
       - >-
         docker run --rm
-        --volume "$(pwd):/workspace"
-        --workdir /{{default "workspace" .GOAT_BUF_WORK_DIR}}
+        --volume "$(pwd):/goatworkspace"
+        --workdir /{{default "goatworkspace" .GOAT_BUF_WORK_DIR}}
         {{if eq OS "linux"}}
         --user $(id -u):$(id -g)
-        --env XDG_CACHE_HOME=/workspace
+        --env XDG_CACHE_HOME=/goatworkspace
         {{end}}
         bufbuild/buf mod update
       - >-
         docker run --rm
-        --volume "$(pwd):/workspace"
-        --workdir /{{default "workspace" .GOAT_BUF_WORK_DIR}}
+        --volume "$(pwd):/goatworkspace"
+        --workdir /{{default "goatworkspace" .GOAT_BUF_WORK_DIR}}
         {{if eq OS "linux"}}
         --user $(id -u):$(id -g)
-        --env XDG_CACHE_HOME=/workspace
+        --env XDG_CACHE_HOME=/goatworkspace
         {{end}}
         bufbuild/buf generate .
       - touch gen/proto.touch
