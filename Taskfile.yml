@@ -8,10 +8,15 @@ tasks:
     deps: [test]
 
   gen:
+    vars:
+      GOAT_BUF_WORK_DIR: '{{default "workspace" .GOAT_BUF_WORK_DIR}}'
+ 
     desc: |
       Run any generate actions. Useful to run to make an IDE happy.
     deps:
       - task: gen-proto
+        vars: 
+          GOAT_BUF_WORK_DIR: '{{default "workspace" .GOAT_BUF_WORK_DIR}}'
       - task: gen-mocks
 
   test:
@@ -40,20 +45,20 @@ tasks:
     cmds:
       - >-
         docker run --rm
-        --volume "$(pwd):/goatworkspace"
-        --workdir /{{default "goatworkspace" .GOAT_BUF_WORK_DIR}}
+        --volume "{{.ROOT_DIR}}:/workspace"
+        --workdir /{{default "workspace" .GOAT_BUF_WORK_DIR}}
         {{if eq OS "linux"}}
         --user $(id -u):$(id -g)
-        --env XDG_CACHE_HOME=/goatworkspace
+        --env XDG_CACHE_HOME=/workspace
         {{end}}
         bufbuild/buf mod update
       - >-
         docker run --rm
-        --volume "$(pwd):/goatworkspace"
-        --workdir /{{default "goatworkspace" .GOAT_BUF_WORK_DIR}}
+        --volume "{{.ROOT_DIR}}:/workspace"
+        --workdir /{{default "workspace" .GOAT_BUF_WORK_DIR}}
         {{if eq OS "linux"}}
         --user $(id -u):$(id -g)
-        --env XDG_CACHE_HOME=/goatworkspace
+        --env XDG_CACHE_HOME=/workspace
         {{end}}
         bufbuild/buf generate .
       - touch gen/proto.touch
