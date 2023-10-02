@@ -53,7 +53,7 @@ func TestUnary(t *testing.T) {
 		sent := testproto.Msg{Value: 42}
 		exp := testproto.Msg{Value: 43}
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().Unary(mock.Anything, mock.MatchedBy(
 			func(m *testproto.Msg) bool {
 				return m.Value == sent.Value
@@ -92,7 +92,7 @@ func TestUnary(t *testing.T) {
 		method := "/" + testproto.TestService_ServiceDesc.ServiceName + "/Unary"
 		sent := testproto.Msg{Value: 42}
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().Unary(mock.Anything, mock.MatchedBy(
 			func(m *testproto.Msg) bool {
 				return m.Value == sent.Value
@@ -137,7 +137,7 @@ func TestServerStream(t *testing.T) {
 			expected[i] = &testproto.Msg{Value: int32(i + 1)}
 		}
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().ServerStream(mock.Anything, mock.Anything).
 			Run(
 				func(m *testproto.Msg, stream testproto.TestService_ServerStreamServer) {
@@ -219,7 +219,7 @@ func TestServerStream(t *testing.T) {
 
 		srv := NewServer(dst)
 		defer srv.Stop()
-		testproto.RegisterTestServiceServer(srv, mocks.NewTestServiceServer(t))
+		testproto.RegisterTestServiceServer(srv, mocks.NewMockTestServiceServer(t))
 		conn := testutil.NewTestConn()
 
 		go func() {

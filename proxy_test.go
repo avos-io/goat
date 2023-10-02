@@ -419,7 +419,7 @@ func TestReadErrorClosesBothLoops(t *testing.T) {
 
 	doneChannel := make(chan struct{})
 
-	client1Rw := mocks.NewRpcReadWriter(t)
+	client1Rw := mocks.NewMockRpcReadWriter(t)
 	client1Rw.EXPECT().Write(mock.Anything, mock.Anything).Return(errors.New("error"))
 	client1Rw.EXPECT().Read(mock.Anything).Run(func(ctx context.Context) {
 		<-ctx.Done()

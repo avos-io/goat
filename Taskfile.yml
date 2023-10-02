@@ -2,6 +2,9 @@ version: '3'
 method: timestamp
 run: once
 
+vars:
+  MOCKERY: github.com/vektra/mockery/v2@v2.34.2
+
 tasks:
   default:
     deps: [test]
@@ -50,11 +53,12 @@ tasks:
   gen-mocks:
     deps: [gen-proto]
     cmds:
-      - mockery --name "RpcReadWriter" --dir types --output ./gen/mocks
-      - mockery --dir ./gen/testproto --output ./gen/testproto/mocks --all --keeptree
+      - go run {{.MOCKERY}} --log-level=warn
+      - touch gen/mockery.stamp
     sources:
-      - "pkg/**/*.go"
+      - "internal/*/*.go"
       - "goat.go"
+      - ".mockery.yml"
     generates:
-      - gen/mocks/**/*.go
+      - gen/mockery.stamp
 

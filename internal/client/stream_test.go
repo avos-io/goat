@@ -24,7 +24,7 @@ import (
 var errTest = errors.New("EXPECTED TEST ERROR")
 
 func TestLifecycle(t *testing.T) {
-	rw := mocks.NewRpcReadWriter(t)
+	rw := mocks.NewMockRpcReadWriter(t)
 	rw.EXPECT().Read(mock.Anything).Return(nil, errTest)
 
 	teardownCalled := make(chan struct{})
@@ -53,7 +53,7 @@ func TestHeader(t *testing.T) {
 			},
 		}
 
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 		rw.EXPECT().Read(mock.Anything).Return(&goatorepo.Rpc{
 			Id:     1,
 			Header: sent,
@@ -77,7 +77,7 @@ func TestHeader(t *testing.T) {
 	t.Run("Read err", func(t *testing.T) {
 		is := require.New(t)
 
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 		rw.EXPECT().Read(mock.Anything).Return(nil, errTest)
 
 		stream := NewStream(context.Background(), 0, "", rw, func() {}, "src", "dst")
@@ -100,7 +100,7 @@ func TestTrailer(t *testing.T) {
 			},
 		}
 
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 		rw.EXPECT().Read(mock.Anything).Return(&goatorepo.Rpc{
 			Id:      9,
 			Header:  &goatorepo.RequestHeader{Method: "method"},
@@ -120,7 +120,7 @@ func TestTrailer(t *testing.T) {
 	t.Run("No metadata", func(t *testing.T) {
 		is := require.New(t)
 
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 		rw.EXPECT().Read(mock.Anything).Return(&goatorepo.Rpc{
 			Id:      9001,
 			Header:  &goatorepo.RequestHeader{Method: "my_method"},
@@ -140,7 +140,7 @@ func TestCloseSend(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		is := require.New(t)
 
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 		id := uint64(9001)
 		method := "method"
 
@@ -165,7 +165,7 @@ func TestCloseSend(t *testing.T) {
 	t.Run("Write err", func(t *testing.T) {
 		is := require.New(t)
 
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 		stream := NewStream(context.Background(), 0, "", rw, func() {}, "src", "dst")
 
 		unblockRead := make(chan time.Time)
@@ -177,7 +177,7 @@ func TestCloseSend(t *testing.T) {
 }
 
 func TestContext(t *testing.T) {
-	rw := mocks.NewRpcReadWriter(t)
+	rw := mocks.NewMockRpcReadWriter(t)
 	unblockRead := make(chan time.Time)
 	rw.EXPECT().Read(mock.Anything).WaitUntil(unblockRead).Return(nil, errTest).Maybe()
 	stream := NewStream(context.Background(), 0, "", rw, func() {}, "src", "dst")
@@ -189,7 +189,7 @@ func TestSendMsg(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		is := require.New(t)
 
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 		id := uint64(9001)
 		method := "method"
 
@@ -219,7 +219,7 @@ func TestSendMsg(t *testing.T) {
 	t.Run("Write err", func(t *testing.T) {
 		is := require.New(t)
 
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 		id := uint64(9001)
 		method := "method"
 
@@ -240,7 +240,7 @@ func TestSendMsg(t *testing.T) {
 	})
 
 	t.Run("Write picks up loop read err", func(t *testing.T) {
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 		id := uint64(9001)
 		method := "method"
 
@@ -274,7 +274,7 @@ func TestSendMsg(t *testing.T) {
 	})
 
 	t.Run("Write picks up recvd error", func(t *testing.T) {
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 		id := uint64(9001)
 		method := "method"
 
@@ -322,7 +322,7 @@ func TestRecvMsg(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		is := require.New(t)
 
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 
 		msg := testproto.Msg{Value: 9001}
 		msgBytes, err := encoding.GetCodec(proto.Name).Marshal(&msg)
@@ -360,7 +360,7 @@ func TestRecvMsg(t *testing.T) {
 	t.Run("RecvMsg picks up loop read err", func(t *testing.T) {
 		is := require.New(t)
 
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 		id := uint64(9001)
 		method := "method"
 
@@ -381,7 +381,7 @@ func TestRecvMsg(t *testing.T) {
 	t.Run("RecvMsg picks up error", func(t *testing.T) {
 		is := require.New(t)
 
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 		stream := NewStream(context.Background(), 42, "method", rw, func() {}, "src", "dst")
 
 		recvErr := goatorepo.Rpc{
