@@ -176,7 +176,7 @@ func TestUnaryMethodFailureDespiteBody(t *testing.T) {
 func TestUnaryMethodFailureChannelClosed(t *testing.T) {
 	// Make sure we properly handle the case where our IO disconnects while we're
 	// waiting on a reply to a unary Rpc.
-	rw := mocks.NewRpcReadWriter(t)
+	rw := mocks.NewMockRpcReadWriter(t)
 
 	rm := client.NewRpcMultiplexer(rw)
 	defer rm.Close()
@@ -204,7 +204,7 @@ func TestUnaryMethodFailureChannelClosed(t *testing.T) {
 
 func TestNewStreamReadWriter(t *testing.T) {
 	t.Run("Write", func(t *testing.T) {
-		rw := mocks.NewRpcReadWriter(t)
+		rw := mocks.NewMockRpcReadWriter(t)
 
 		unblockRead := make(chan time.Time)
 		rw.EXPECT().Read(mock.Anything).WaitUntil(unblockRead).Return(nil, errTest)
