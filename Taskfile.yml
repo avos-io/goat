@@ -52,7 +52,8 @@ tasks:
       - touch gen/proto.touch
     generates:
       - gen/proto.touch
-
+    sources:
+      - "**/*.proto"
   gen-mocks:
     deps: [gen-proto]
     cmds:
@@ -64,4 +65,3 @@ tasks:
       - ".mockery.yml"
     generates:
       - gen/mockery.stamp
-
