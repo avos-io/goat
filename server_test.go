@@ -1,6 +1,7 @@
-package server
+package goat
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -11,20 +12,22 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 
-	wrapped "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/gen/testproto/mocks"
 	"github.com/avos-io/goat/internal/testutil"
 )
 
+var errTest = errors.New("TEST ERROR (EXPECTED)")
+
 func TestNew(t *testing.T) {
-	new := NewServer()
+	new := NewServer("s0")
 	defer new.Stop()
 	require.NotNil(t, new)
 }
 
 func TestStop(t *testing.T) {
-	srv := NewServer()
+	srv := NewServer("s0")
 
 	conn := testutil.NewTestConn()
 
@@ -42,15 +45,15 @@ func TestUnary(t *testing.T) {
 	t.Run("We can receive a unary RPC and send out its reply", func(t *testing.T) {
 		is := require.New(t)
 
-		srv := NewServer()
+		srv := NewServer("s0")
 		defer srv.Stop()
 
 		id := uint64(99)
-		method := testproto.TestService_ServiceDesc.ServiceName + "/Unary"
+		method := "/" + testproto.TestService_ServiceDesc.ServiceName + "/Unary"
 		sent := testproto.Msg{Value: 42}
 		exp := testproto.Msg{Value: 43}
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().Unary(mock.Anything, mock.MatchedBy(
 			func(m *testproto.Msg) bool {
 				return m.Value == sent.Value
@@ -65,7 +68,7 @@ func TestUnary(t *testing.T) {
 			srv.Serve(conn)
 		}()
 
-		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent), Err: nil}
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
 
 		select {
 		case w := <-conn.WriteChan:
@@ -82,14 +85,14 @@ func TestUnary(t *testing.T) {
 	t.Run("If the unary handler returns an error, we wrap that up", func(t *testing.T) {
 		is := require.New(t)
 
-		srv := NewServer()
+		srv := NewServer("s0")
 		defer srv.Stop()
 
 		id := uint64(1)
-		method := testproto.TestService_ServiceDesc.ServiceName + "/Unary"
+		method := "/" + testproto.TestService_ServiceDesc.ServiceName + "/Unary"
 		sent := testproto.Msg{Value: 42}
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().Unary(mock.Anything, mock.MatchedBy(
 			func(m *testproto.Msg) bool {
 				return m.Value == sent.Value
@@ -104,7 +107,7 @@ func TestUnary(t *testing.T) {
 			srv.Serve(conn)
 		}()
 
-		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent), Err: nil}
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
 
 		select {
 		case w := <-conn.WriteChan:
@@ -122,7 +125,7 @@ func TestServerStream(t *testing.T) {
 	t.Run("We can fulfill a server stream request", func(t *testing.T) {
 		is := require.New(t)
 
-		srv := NewServer()
+		srv := NewServer("s0")
 		defer srv.Stop()
 
 		id := uint64(99)
@@ -134,7 +137,7 @@ func TestServerStream(t *testing.T) {
 			expected[i] = &testproto.Msg{Value: int32(i + 1)}
 		}
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().ServerStream(mock.Anything, mock.Anything).
 			Run(
 				func(m *testproto.Msg, stream testproto.TestService_ServerStreamServer) {
@@ -156,30 +159,34 @@ func TestServerStream(t *testing.T) {
 
 		// Open stream
 		conn.ReadChan <- testutil.ReadReturn{
-			Rpc: &wrapped.Rpc{
+			Rpc: &goatorepo.Rpc{
 				Id: id,
-				Header: &wrapped.RequestHeader{
-					Method: method,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
 				},
 			},
 			Err: nil,
 		}
 
 		// SendMsg
-		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent), Err: nil}
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
 
 		// CloseSend
 		conn.ReadChan <- testutil.ReadReturn{
-			Rpc: &wrapped.Rpc{
+			Rpc: &goatorepo.Rpc{
 				Id: id,
-				Header: &wrapped.RequestHeader{
-					Method: method,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
 				},
-				Status: &wrapped.ResponseStatus{
+				Status: &goatorepo.ResponseStatus{
 					Code:    int32(codes.OK),
 					Message: codes.OK.String(),
 				},
-				Trailer: &wrapped.Trailer{},
+				Trailer: &goatorepo.Trailer{},
 			},
 			Err: nil,
 		}
@@ -200,7 +207,51 @@ func TestServerStream(t *testing.T) {
 				t.Fatal("timeout")
 			}
 		}
+	})
 
+	t.Run("We send RST stream if we receive a broken stream", func(t *testing.T) {
+		is := require.New(t)
+
+		id := uint64(99)
+		method := testproto.TestService_ServiceDesc.ServiceName + "/ServerStream"
+		src := "src"
+		dst := "dst"
+
+		srv := NewServer(dst)
+		defer srv.Stop()
+		testproto.RegisterTestServiceServer(srv, mocks.NewMockTestServiceServer(t))
+		conn := testutil.NewTestConn()
+
+		go func() {
+			srv.Serve(conn)
+		}()
+
+		// Just start sending data with no 'open stream'-- this indicates a broken
+		// stream, most likely a client 'reconnecting' to a different server than
+		// the one which it previously had a running stream with.
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      src,
+					Destination: dst,
+				},
+				Body: &goatorepo.Body{Data: []byte{'u', 'h', 'o', 'h'}},
+			},
+			Err: nil,
+		}
+
+		select {
+		case reply := <-conn.WriteChan:
+			is.Equal(id, reply.GetId())
+			is.Equal(dst, reply.GetHeader().GetSource())
+			is.Equal(src, reply.GetHeader().GetDestination())
+			is.Equal(int32(codes.Aborted), reply.GetStatus().GetCode())
+			is.Equal("RST stream", reply.GetStatus().GetMessage())
+		case <-time.After(1 * time.Second):
+			t.Fatal("timeout")
+		}
 	})
 }
 
@@ -272,7 +323,7 @@ func waitTimeout(t *testing.T, on chan struct{}) {
 	}
 }
 
-func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg) *wrapped.Rpc {
+func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg, src, dst string) *goatorepo.Rpc {
 	codec := encoding.GetCodec(proto.Name)
 
 	body, err := codec.Marshal(msg)
@@ -280,17 +331,19 @@ func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg) *wrapped.Rpc {
 		panic(err)
 	}
 
-	rpc := &wrapped.Rpc{
+	rpc := &goatorepo.Rpc{
 		Id: id,
-		Header: &wrapped.RequestHeader{
-			Method: fullMethod,
+		Header: &goatorepo.RequestHeader{
+			Method:      fullMethod,
+			Source:      src,
+			Destination: dst,
 		},
-		Body: &wrapped.Body{Data: body},
+		Body: &goatorepo.Body{Data: body},
 	}
 	return rpc
 }
 
-func unwrapBody(rpc *wrapped.Rpc) *testproto.Msg {
+func unwrapBody(rpc *goatorepo.Rpc) *testproto.Msg {
 	codec := encoding.GetCodec(proto.Name)
 
 	if rpc.GetBody() == nil {
@@ -298,7 +351,7 @@ func unwrapBody(rpc *wrapped.Rpc) *testproto.Msg {
 	}
 
 	var out testproto.Msg
-	err := codec.Unmarshal(rpc.Body.Data, &out)
+	err := codec.Unmarshal(rpc.Body.GetData(), &out)
 	if err != nil {
 		panic(err)
 	}

@@ -1,0 +1,3 @@
+[submodule "goatorepo"]
+	path = goatorepo
+	url = git@github.com:avos-io/goatorepo.git

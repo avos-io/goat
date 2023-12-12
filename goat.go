@@ -6,15 +6,18 @@
 package goat
 
 import (
-	"context"
-
-	wrapped "github.com/avos-io/goat/gen"
+	proto "github.com/avos-io/goat/gen/goatorepo"
+	"github.com/avos-io/goat/types"
 )
+
+// Rpc is the fundamental type in Goat: the generic protobuf structure into
+// which all goat messages are serialised.
+type Rpc = proto.Rpc
+
+// RpcHeader represents the header of a Goat Rpc.
+type RpcHeader = proto.RequestHeader
 
 // RpcReadWriter is the generic interface used by Goat's client and servers.
 // It utilises the wrapped.Rpc protobuf format for generically wrapping gRPC
 // calls and their metadata.
-type RpcReadWriter interface {
-	Read(context.Context) (*wrapped.Rpc, error)
-	Write(context.Context, *wrapped.Rpc) error
-}
+type RpcReadWriter = types.RpcReadWriter

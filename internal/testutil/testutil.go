@@ -3,28 +3,28 @@ package testutil
 import (
 	"context"
 
-	wrapped "github.com/avos-io/goat/gen"
+	goatorepo "github.com/avos-io/goat/gen/goatorepo"
 )
 
 type TestConn struct {
 	ReadChan  chan ReadReturn
-	WriteChan chan *wrapped.Rpc
+	WriteChan chan *goatorepo.Rpc
 }
 
 type ReadReturn struct {
-	Rpc *wrapped.Rpc
+	Rpc *goatorepo.Rpc
 	Err error
 }
 
 func NewTestConn() *TestConn {
 	conn := TestConn{
 		ReadChan:  make(chan ReadReturn),
-		WriteChan: make(chan *wrapped.Rpc),
+		WriteChan: make(chan *goatorepo.Rpc),
 	}
 	return &conn
 }
 
-func (c *TestConn) Read(ctx context.Context) (*wrapped.Rpc, error) {
+func (c *TestConn) Read(ctx context.Context) (*goatorepo.Rpc, error) {
 	select {
 	case rr := <-c.ReadChan:
 		return rr.Rpc, rr.Err
@@ -33,7 +33,7 @@ func (c *TestConn) Read(ctx context.Context) (*wrapped.Rpc, error) {
 	}
 }
 
-func (c *TestConn) Write(ctx context.Context, rpc *wrapped.Rpc) error {
+func (c *TestConn) Write(ctx context.Context, rpc *goatorepo.Rpc) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

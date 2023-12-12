@@ -15,19 +15,22 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/avos-io/goat"
-	wrapped "github.com/avos-io/goat/gen"
+	goatorepo "github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/internal"
+	"github.com/avos-io/goat/types"
 )
 
 type serverStream struct {
-	ctx    context.Context
-	id     uint64
+	ctx context.Context
+	id  uint64
+
 	method string
+	src    string
+	dst    string
 
 	codec encoding.Codec
 
-	rw goat.RpcReadWriter
+	rw types.RpcReadWriter
 
 	protected struct {
 		sync.Mutex
@@ -41,16 +44,20 @@ type serverStream struct {
 
 var _ grpc.ServerStream = (*serverStream)(nil)
 
-func newServerStream(
+func NewServerStream(
 	ctx context.Context,
 	id uint64,
 	method string,
-	rw goat.RpcReadWriter,
+	src string,
+	dst string,
+	rw types.RpcReadWriter,
 ) (*serverStream, error) {
 	return &serverStream{
 		ctx:    ctx,
 		id:     id,
 		method: method,
+		src:    src,
+		dst:    dst,
 		codec:  encoding.GetCodec(proto.Name),
 		rw:     rw,
 	}, nil
@@ -87,11 +94,13 @@ func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
 		return nil
 	}
 
-	rpc := wrapped.Rpc{
+	rpc := goatorepo.Rpc{
 		Id: ss.id,
-		Header: &wrapped.RequestHeader{
-			Method:  ss.method,
-			Headers: internal.ToKeyValue(ss.protected.headers...),
+		Header: &goatorepo.RequestHeader{
+			Method:      ss.method,
+			Source:      ss.src,
+			Destination: ss.dst,
+			Headers:     internal.ToKeyValue(ss.protected.headers...),
 		},
 	}
 
@@ -148,12 +157,14 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 		return err
 	}
 
-	rpc := wrapped.Rpc{
+	rpc := goatorepo.Rpc{
 		Id: ss.id,
-		Header: &wrapped.RequestHeader{
-			Method: ss.method,
+		Header: &goatorepo.RequestHeader{
+			Method:      ss.method,
+			Source:      ss.src,
+			Destination: ss.dst,
 		},
-		Body: &wrapped.Body{
+		Body: &goatorepo.Body{
 			Data: body,
 		},
 	}
@@ -223,16 +234,18 @@ func (ss *serverStream) SendTrailer(trErr error) error {
 	}
 	ss.protected.trailersSent = true
 
-	tr := wrapped.Rpc{
+	tr := goatorepo.Rpc{
 		Id: ss.id,
-		Header: &wrapped.RequestHeader{
-			Method: ss.method,
+		Header: &goatorepo.RequestHeader{
+			Method:      ss.method,
+			Source:      ss.src,
+			Destination: ss.dst,
 		},
-		Status: &wrapped.ResponseStatus{
+		Status: &goatorepo.ResponseStatus{
 			Code:    int32(codes.OK),
 			Message: codes.OK.String(),
 		},
-		Trailer: &wrapped.Trailer{
+		Trailer: &goatorepo.Trailer{
 			Metadata: internal.ToKeyValue(ss.protected.trailers...),
 		},
 	}

@@ -7,12 +7,12 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	"github.com/avos-io/goat"
-	wrapped "github.com/avos-io/goat/gen"
+	goatorepo "github.com/avos-io/goat/gen/goatorepo"
+	"github.com/avos-io/goat/types"
 )
 
-func ToKeyValue(mds ...metadata.MD) []*wrapped.KeyValue {
-	h := []*wrapped.KeyValue{}
+func ToKeyValue(mds ...metadata.MD) []*goatorepo.KeyValue {
+	h := []*goatorepo.KeyValue{}
 	for k, vs := range metadata.Join(mds...) {
 		lowerK := strings.ToLower(k)
 		// binary headers must be base-64-encoded
@@ -21,13 +21,13 @@ func ToKeyValue(mds ...metadata.MD) []*wrapped.KeyValue {
 			if isBin {
 				v = base64.URLEncoding.EncodeToString([]byte(v))
 			}
-			h = append(h, &wrapped.KeyValue{Key: k, Value: v})
+			h = append(h, &goatorepo.KeyValue{Key: k, Value: v})
 		}
 	}
 	return h
 }
 
-func ToMetadata(kvs []*wrapped.KeyValue) (metadata.MD, error) {
+func ToMetadata(kvs []*goatorepo.KeyValue) (metadata.MD, error) {
 	md := metadata.MD{}
 	for _, h := range kvs {
 		k := strings.ToLower(h.Key)
@@ -47,21 +47,21 @@ func ToMetadata(kvs []*wrapped.KeyValue) (metadata.MD, error) {
 // NewFnReadWriter is a convenience wrapper to turn read and write functions
 // into an RpcReadWriter.
 func NewFnReadWriter(
-	r func(context.Context) (*wrapped.Rpc, error),
-	w func(context.Context, *wrapped.Rpc) error,
-) goat.RpcReadWriter {
+	r func(context.Context) (*goatorepo.Rpc, error),
+	w func(context.Context, *goatorepo.Rpc) error,
+) types.RpcReadWriter {
 	return &fnReadWriter{r, w}
 }
 
 type fnReadWriter struct {
-	r func(context.Context) (*wrapped.Rpc, error)
-	w func(context.Context, *wrapped.Rpc) error
+	r func(context.Context) (*goatorepo.Rpc, error)
+	w func(context.Context, *goatorepo.Rpc) error
 }
 
-func (frw *fnReadWriter) Read(ctx context.Context) (*wrapped.Rpc, error) {
+func (frw *fnReadWriter) Read(ctx context.Context) (*goatorepo.Rpc, error) {
 	return frw.r(ctx)
 }
 
-func (frw *fnReadWriter) Write(ctx context.Context, rpc *wrapped.Rpc) error {
+func (frw *fnReadWriter) Write(ctx context.Context, rpc *goatorepo.Rpc) error {
 	return frw.w(ctx, rpc)
 }

@@ -1,4 +1,4 @@
-// package goat_test contains end-to-end tests
+// package contains end-to-end tests
 package goat_test
 
 import (
@@ -14,11 +14,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/avos-io/goat/client"
+	"github.com/avos-io/goat"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/gen/testproto/mocks"
 	"github.com/avos-io/goat/internal/testutil"
-	"github.com/avos-io/goat/server"
 )
 
 var errTest = errors.New("TEST ERROR (EXPECTED)")
@@ -30,7 +29,7 @@ func TestUnary(t *testing.T) {
 		send := &testproto.Msg{Value: 42}
 		exp := &testproto.Msg{Value: 9001}
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().Unary(mock.Anything, mock.MatchedBy(
 			func(msg *testproto.Msg) bool {
 				return msg.GetValue() == send.GetValue()
@@ -49,7 +48,7 @@ func TestUnary(t *testing.T) {
 	t.Run("Error", func(t *testing.T) {
 		is := require.New(t)
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().Unary(mock.Anything, mock.Anything).Return(nil, errTest)
 
 		client, ctx, teardown := setup(service)
@@ -59,6 +58,22 @@ func TestUnary(t *testing.T) {
 		is.Error(err)
 		is.Nil(reply)
 	})
+
+	t.Run("Error with body is still error", func(t *testing.T) {
+		is := require.New(t)
+
+		exp := &testproto.Msg{Value: 9001}
+
+		service := mocks.NewMockTestServiceServer(t)
+		service.EXPECT().Unary(mock.Anything, mock.Anything).Return(exp, errTest)
+
+		client, ctx, teardown := setup(service)
+		defer teardown()
+
+		reply, err := client.Unary(ctx, &testproto.Msg{Value: 4})
+		is.Nil(reply) // we don't bother decoding the body
+		is.Error(err)
+	})
 }
 
 func TestServerStream(t *testing.T) {
@@ -67,7 +82,7 @@ func TestServerStream(t *testing.T) {
 
 		sent := &testproto.Msg{Value: 10}
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().ServerStream(mock.Anything, mock.Anything).
 			Run(
 				func(msg *testproto.Msg, stream testproto.TestService_ServerStreamServer) {
@@ -102,7 +117,7 @@ func TestServerStream(t *testing.T) {
 	t.Run("Error", func(t *testing.T) {
 		is := require.New(t)
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().ServerStream(mock.Anything, mock.Anything).Return(errTest)
 
 		client, ctx, teardown := setup(service)
@@ -129,7 +144,7 @@ func TestClientStream(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		is := require.New(t)
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().ClientStream(mock.Anything).
 			Run(func(stream testproto.TestService_ClientStreamServer) {
 				sum := int32(0)
@@ -167,7 +182,7 @@ func TestClientStream(t *testing.T) {
 	t.Run("Error", func(t *testing.T) {
 		is := require.New(t)
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().ClientStream(mock.Anything).Return(errTest)
 
 		client, ctx, teardown := setup(service)
@@ -187,13 +202,13 @@ func TestBidiStream(t *testing.T) {
 	t.Run("OK: client messages first", func(t *testing.T) {
 		is := require.New(t)
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().BidiStream(mock.Anything).
 			Run(
 				func(stream testproto.TestService_BidiStreamServer) {
 					for {
 						msg, err := stream.Recv()
-						if err == io.EOF {
+						if err == io.EOF || err == context.Canceled {
 							return
 						}
 						is.NoError(err)
@@ -223,7 +238,7 @@ func TestBidiStream(t *testing.T) {
 	t.Run("OK: server messages first", func(t *testing.T) {
 		is := require.New(t)
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().BidiStream(mock.Anything).
 			Run(
 				func(stream testproto.TestService_BidiStreamServer) {
@@ -261,7 +276,7 @@ func TestBidiStream(t *testing.T) {
 	t.Run("Error", func(t *testing.T) {
 		is := require.New(t)
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().BidiStream(mock.Anything).Return(errTest)
 
 		client, ctx, teardown := setup(service)
@@ -282,7 +297,7 @@ func TestStreamHeaders(t *testing.T) {
 	t.Run("Headers sent with SendHeader", func(t *testing.T) {
 		is := require.New(t)
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().BidiStream(mock.Anything).
 			Run(
 				func(stream testproto.TestService_BidiStreamServer) {
@@ -321,7 +336,7 @@ func TestStreamHeaders(t *testing.T) {
 	t.Run("Headers sent on first message", func(t *testing.T) {
 		is := require.New(t)
 
-		service := mocks.NewTestServiceServer(t)
+		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().BidiStream(mock.Anything).
 			Run(
 				func(stream testproto.TestService_BidiStreamServer) {
@@ -357,7 +372,7 @@ func TestStreamHeaders(t *testing.T) {
 func TestStreamTrailers(t *testing.T) {
 	is := require.New(t)
 
-	service := mocks.NewTestServiceServer(t)
+	service := mocks.NewMockTestServiceServer(t)
 	service.EXPECT().ClientStream(mock.Anything).
 		Run(func(stream testproto.TestService_ClientStreamServer) {
 			md := metadata.New(map[string]string{"foo": "bar"})
@@ -422,7 +437,7 @@ func TestUnaryInterceptor(t *testing.T) {
 		return handler(newCtx, req)
 	}
 
-	service := mocks.NewTestServiceServer(t)
+	service := mocks.NewMockTestServiceServer(t)
 	service.EXPECT().Unary(mock.Anything, mock.Anything).
 		Run(func(ctx context.Context, msg *testproto.Msg) {
 			md, ok := metadata.FromIncomingContext(ctx)
@@ -442,11 +457,11 @@ func TestUnaryInterceptor(t *testing.T) {
 
 	client, ctx, teardown := setupOpts(
 		service,
-		[]client.DialOption{
-			client.WithUnaryInterceptor(clientInterceptor),
+		[]goat.DialOption{
+			goat.WithUnaryInterceptor(clientInterceptor),
 		},
-		[]server.ServerOption{
-			server.UnaryInterceptor(serverInterceptor),
+		[]goat.ServerOption{
+			goat.UnaryInterceptor(serverInterceptor),
 		},
 	)
 	defer teardown()
@@ -517,7 +532,7 @@ func TestChainUnaryInterceptor(t *testing.T) {
 		serverInterceptors = append(serverInterceptors, makeServerInterceptor(k, v))
 	}
 
-	service := mocks.NewTestServiceServer(t)
+	service := mocks.NewMockTestServiceServer(t)
 	service.EXPECT().Unary(mock.Anything, mock.Anything).
 		Run(func(ctx context.Context, msg *testproto.Msg) {
 			md, ok := metadata.FromIncomingContext(ctx)
@@ -539,13 +554,13 @@ func TestChainUnaryInterceptor(t *testing.T) {
 
 	client, ctx, teardown := setupOpts(
 		service,
-		[]client.DialOption{
-			client.WithUnaryInterceptor(
+		[]goat.DialOption{
+			goat.WithUnaryInterceptor(
 				grpcMiddleware.ChainUnaryClient(clientInterceptors...),
 			),
 		},
-		[]server.ServerOption{
-			server.UnaryInterceptor(
+		[]goat.ServerOption{
+			goat.UnaryInterceptor(
 				grpcMiddleware.ChainUnaryServer(serverInterceptors...),
 			),
 		},
@@ -596,7 +611,7 @@ func TestStreamInterceptor(t *testing.T) {
 		})
 	}
 
-	service := mocks.NewTestServiceServer(t)
+	service := mocks.NewMockTestServiceServer(t)
 	service.EXPECT().ServerStream(mock.Anything, mock.Anything).
 		Run(func(_ *testproto.Msg, stream testproto.TestService_ServerStreamServer) {
 			md, ok := metadata.FromIncomingContext(stream.Context())
@@ -618,11 +633,11 @@ func TestStreamInterceptor(t *testing.T) {
 
 	client, ctx, teardown := setupOpts(
 		service,
-		[]client.DialOption{
-			client.WithStreamInterceptor(clientInterceptor),
+		[]goat.DialOption{
+			goat.WithStreamInterceptor(clientInterceptor),
 		},
-		[]server.ServerOption{
-			server.StreamInterceptor(serverInterceptor),
+		[]goat.ServerOption{
+			goat.StreamInterceptor(serverInterceptor),
 		},
 	)
 	defer teardown()
@@ -700,7 +715,7 @@ func TestChainStreamInterceptor(t *testing.T) {
 		serverInterceptors = append(serverInterceptors, makeServerInterceptor(k, v))
 	}
 
-	service := mocks.NewTestServiceServer(t)
+	service := mocks.NewMockTestServiceServer(t)
 	service.EXPECT().ServerStream(mock.Anything, mock.Anything).
 		Run(func(_ *testproto.Msg, stream testproto.TestService_ServerStreamServer) {
 			md, ok := metadata.FromIncomingContext(stream.Context())
@@ -724,13 +739,13 @@ func TestChainStreamInterceptor(t *testing.T) {
 
 	client, ctx, teardown := setupOpts(
 		service,
-		[]client.DialOption{
-			client.WithStreamInterceptor(
+		[]goat.DialOption{
+			goat.WithStreamInterceptor(
 				grpcMiddleware.ChainStreamClient(clientInterceptors...),
 			),
 		},
-		[]server.ServerOption{
-			server.StreamInterceptor(
+		[]goat.ServerOption{
+			goat.StreamInterceptor(
 				grpcMiddleware.ChainStreamServer(serverInterceptors...),
 			),
 		},
@@ -750,8 +765,8 @@ func setup(s testproto.TestServiceServer) (testproto.TestServiceClient, context.
 
 func setupOpts(
 	s testproto.TestServiceServer,
-	clientOpts []client.DialOption,
-	serverOpts []server.ServerOption,
+	clientOpts []goat.DialOption,
+	serverOpts []goat.ServerOption,
 ) (testproto.TestServiceClient, context.Context, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -782,7 +797,7 @@ func setupOpts(
 		}
 	}()
 
-	server := server.NewServer(serverOpts...)
+	server := goat.NewServer("server0", serverOpts...)
 	testproto.RegisterTestServiceServer(server, s)
 
 	go func() {
@@ -790,7 +805,7 @@ func setupOpts(
 	}()
 
 	client := testproto.NewTestServiceClient(
-		client.NewClientConn(clientConn, "src", "dst", clientOpts...),
+		goat.NewClientConn(clientConn, "src", "server0", clientOpts...),
 	)
 
 	teardown := func() {

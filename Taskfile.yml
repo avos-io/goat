@@ -2,6 +2,9 @@ version: '3'
 method: timestamp
 run: once
 
+vars:
+  MOCKERY: github.com/vektra/mockery/v2@v2.34.2
+
 tasks:
   default:
     deps: [test]
@@ -20,6 +23,7 @@ tasks:
     vars:
       FLAGS: '{{default "-cover -timeout 30s" .FLAGS}}'
     cmds:
+      - exhaustive -default-signifies-exhaustive ./...
       - go test {{.FLAGS}} ./...
 
   build:
@@ -35,26 +39,29 @@ tasks:
       - rm -fr gen/*
 
   gen-proto:
-    env:
-      DISABLE_REQUIRE_UNIMPLEMENTED_SERVERS: 1
-    cmds:
-      - bash protobuild.sh
+    cmds: 
+      - >-
+        docker run --rm
+        --volume "{{.TASKFILE_DIR}}:/workspace"
+        --workdir /workspace
+        {{if eq OS "linux"}}
+        --user $(id -u):$(id -g)
+        --env XDG_CACHE_HOME=/workspace
+        {{end}}
+        bufbuild/buf:1.26.1 generate .
       - touch gen/proto.touch
     generates:
       - gen/proto.touch
     sources:
-      - protobuild.sh
       - "**/*.proto"
-
   gen-mocks:
     deps: [gen-proto]
     cmds:
-      - mockery --with-expecter --dir pkg/ --output ./gen/mocks --all --keeptree --case snake
-      - mockery --with-expecter --name "RpcReadWriter" --dir . --output ./gen/mocks --case snake
-      - mockery --with-expecter --dir ./gen/testproto --output ./gen/testproto/mocks --all --keeptree --case snake
+      - go run {{.MOCKERY}} --log-level=warn
+      - touch gen/mockery.stamp
     sources:
-      - "pkg/**/*.go"
+      - "internal/*/*.go"
       - "goat.go"
+      - ".mockery.yml"
     generates:
-      - gen/mocks/**/*.go
-
+      - gen/mockery.stamp

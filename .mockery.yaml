@@ -1,0 +1,14 @@
+# yaml
+with-expecter: True
+all: true
+
+packages:
+  github.com/avos-io/goat/types: 
+    config:
+      dir: "gen/mocks"
+      outpkg: "mocks"
+  github.com/avos-io/goat/gen/testproto:
+    config:
+      dir: "gen/testproto/mocks"
+      outpkg: "mocks"
+  

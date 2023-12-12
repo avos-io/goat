@@ -26,7 +26,7 @@ type unaryServerTransportStream struct {
 
 var _ grpc.ServerTransportStream = (*unaryServerTransportStream)(nil)
 
-func newUnaryServerTransportStream(name string) *unaryServerTransportStream {
+func NewUnaryServerTransportStream(name string) *unaryServerTransportStream {
 	return &unaryServerTransportStream{fullMethod: name}
 }
 
@@ -108,7 +108,7 @@ type serverTransportStream struct {
 
 var _ grpc.ServerTransportStream = (*serverTransportStream)(nil)
 
-func newServerTransportStream(
+func NewServerTransportStream(
 	fullMethod string,
 	stream grpc.ServerStream,
 ) *serverTransportStream {

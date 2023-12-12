@@ -11,14 +11,14 @@ import (
 
 func TestUnaryTransportStream(t *testing.T) {
 	t.Run("Method", func(t *testing.T) {
-		ts := newUnaryServerTransportStream("foo")
+		ts := NewUnaryServerTransportStream("foo")
 		require.Equal(t, "foo", ts.Method())
 	})
 
 	t.Run("Headers", func(t *testing.T) {
 		is := require.New(t)
 
-		ts := newUnaryServerTransportStream("")
+		ts := NewUnaryServerTransportStream("")
 		md1 := metadata.New(map[string]string{"foo": "1"})
 		md2 := metadata.New(map[string]string{"foo": "2"})
 		md3 := metadata.New(map[string]string{"foo": "2"})
@@ -38,7 +38,7 @@ func TestUnaryTransportStream(t *testing.T) {
 	t.Run("Trailers", func(t *testing.T) {
 		is := require.New(t)
 
-		ts := newUnaryServerTransportStream("")
+		ts := NewUnaryServerTransportStream("")
 		md1 := metadata.New(map[string]string{"foo": "1"})
 		md2 := metadata.New(map[string]string{"foo": "2"})
 
@@ -52,7 +52,7 @@ func TestUnaryTransportStream(t *testing.T) {
 
 func TestServerTransportStream(t *testing.T) {
 	t.Run("Method", func(t *testing.T) {
-		ts := newServerTransportStream("foo", mocks.NewTestService_BidiStreamServer(t))
+		ts := NewServerTransportStream("foo", mocks.NewMockTestService_BidiStreamServer(t))
 		require.Equal(t, "foo", ts.Method())
 	})
 
@@ -61,8 +61,8 @@ func TestServerTransportStream(t *testing.T) {
 
 		md := metadata.New(map[string]string{"foo": "1"})
 
-		m := mocks.NewTestService_BidiStreamServer(t)
-		ts := newServerTransportStream("", m)
+		m := mocks.NewMockTestService_BidiStreamServer(t)
+		ts := NewServerTransportStream("", m)
 
 		m.EXPECT().SetHeader(md).Return(nil).Once()
 		is.NoError(ts.SetHeader(md))

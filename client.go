@@ -1,4 +1,4 @@
-package client
+package goat
 
 import (
 	"context"
@@ -7,9 +7,9 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/avos-io/goat"
-	wrapped "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/internal"
+	"github.com/avos-io/goat/internal/client"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
@@ -17,7 +17,7 @@ import (
 )
 
 type ClientConn struct {
-	mp *RpcMultiplexer
+	mp *client.RpcMultiplexer
 
 	codec encoding.Codec
 
@@ -29,9 +29,9 @@ type ClientConn struct {
 
 var _ grpc.ClientConnInterface = (*ClientConn)(nil)
 
-func NewClientConn(conn goat.RpcReadWriter, source, dest string, opts ...DialOption) *ClientConn {
+func NewClientConn(conn RpcReadWriter, source, dest string, opts ...DialOption) *ClientConn {
 	cc := ClientConn{
-		mp:            NewRpcMultiplexer(conn),
+		mp:            client.NewRpcMultiplexer(conn),
 		codec:         encoding.GetCodec(proto.Name),
 		sourceAddress: source,
 		destAddress:   dest,
@@ -81,13 +81,13 @@ func (cc *ClientConn) invoke(
 	}
 
 	replyBody, err := cc.mp.CallUnaryMethod(ctx,
-		&wrapped.RequestHeader{
+		&goatorepo.RequestHeader{
 			Method:      method,
 			Headers:     headers,
 			Source:      cc.sourceAddress,
 			Destination: cc.destAddress,
 		},
-		&wrapped.Body{
+		&goatorepo.Body{
 			Data: body,
 		},
 	)
@@ -97,7 +97,7 @@ func (cc *ClientConn) invoke(
 		return err
 	}
 
-	err = cc.codec.Unmarshal(replyBody.Data, reply)
+	err = cc.codec.Unmarshal(replyBody.GetData(), reply)
 	if err != nil {
 		log.Error().Err(err).Msg("Invoke Unmarshal")
 	}
@@ -139,25 +139,36 @@ func (cc *ClientConn) newStream(
 		log.Panic().Msg("NewStream: opts unsupported")
 	}
 
-	id, rw, teardown := cc.mp.NewStreamReadWriter(ctx)
+	id, rw, teardown, err := cc.mp.NewStreamReadWriter(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	// open stream
-	rpc := wrapped.Rpc{
+	rpc := goatorepo.Rpc{
 		Id: id,
-		Header: &wrapped.RequestHeader{
+		Header: &goatorepo.RequestHeader{
 			Method:      method,
 			Headers:     headersFromContext(ctx),
 			Source:      cc.sourceAddress,
 			Destination: cc.destAddress,
 		},
 	}
-	err := rw.Write(ctx, &rpc)
+	err = rw.Write(ctx, &rpc)
 	if err != nil {
 		log.Error().Err(err).Msg("NewStream: failed to open")
 		return nil, err
 	}
 
-	return newClientStream(ctx, id, method, rw, teardown), nil
+	return client.NewStream(
+		ctx,
+		id,
+		method,
+		rw,
+		teardown,
+		cc.sourceAddress,
+		cc.destAddress,
+	), nil
 }
 
 func (cc *ClientConn) asStreamer(
@@ -172,8 +183,8 @@ func (cc *ClientConn) asStreamer(
 
 // headersFromContext transforms metadata from the given context into KeyValues
 // which can be used as part of the wrapped header.
-func headersFromContext(ctx context.Context) []*wrapped.KeyValue {
-	h := []*wrapped.KeyValue{}
+func headersFromContext(ctx context.Context) []*goatorepo.KeyValue {
+	h := []*goatorepo.KeyValue{}
 	if md, ok := metadata.FromOutgoingContext(ctx); ok {
 		h = append(h, internal.ToKeyValue(md)...)
 	}
@@ -183,7 +194,7 @@ func headersFromContext(ctx context.Context) []*wrapped.KeyValue {
 		if ms <= 0 {
 			ms = 1
 		}
-		h = append(h, &wrapped.KeyValue{
+		h = append(h, &goatorepo.KeyValue{
 			Key:   "GRPC-Timeout",
 			Value: fmt.Sprintf("%dm", ms),
 		})

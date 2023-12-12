@@ -1,4 +1,4 @@
-package server
+package goat
 
 import (
 	"context"
@@ -17,9 +17,9 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/avos-io/goat"
-	wrapped "github.com/avos-io/goat/gen"
+	"github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/internal"
+	"github.com/avos-io/goat/internal/server"
 )
 
 // ServerOption is an option used when constructing a NewServer.
@@ -50,10 +50,11 @@ func StreamInterceptor(i grpc.StreamServerInterceptor) ServerOption {
 	})
 }
 
-func NewServer(opts ...ServerOption) *Server {
+func NewServer(id string, opts ...ServerOption) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	srv := Server{
+		id:       id,
 		ctx:      ctx,
 		cancel:   cancel,
 		services: make(map[string]*serviceInfo),
@@ -77,6 +78,7 @@ type serviceInfo struct {
 type Server struct {
 	ctx    context.Context
 	cancel context.CancelFunc
+	id     string
 
 	services map[string]*serviceInfo // service name -> service info
 
@@ -120,35 +122,84 @@ func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 	s.services[sd.ServiceName] = info
 }
 
-func (s *Server) Serve(rw goat.RpcReadWriter) error {
+func (s *Server) Serve(rw RpcReadWriter) error {
 	h := newHandler(s.ctx, s, rw)
 	return h.serve()
 }
 
+type unaryRpcArgs struct {
+	info *serviceInfo
+	md   *grpc.MethodDesc
+	rpc  *goatorepo.Rpc
+}
+
 // handler for a specific goat.RpcReadWriter
 type handler struct {
-	ctx context.Context
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	srv *Server
 
-	rw    goat.RpcReadWriter
+	rw    RpcReadWriter
 	codec encoding.Codec
 
 	mu      sync.Mutex // protects streams
-	streams map[uint64]chan *wrapped.Rpc
+	streams map[uint64]chan *goatorepo.Rpc
+
+	writeChan    chan *goatorepo.Rpc
+	unaryRpcChan chan unaryRpcArgs
 }
 
-func newHandler(ctx context.Context, srv *Server, rw goat.RpcReadWriter) *handler {
+func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
+	ctx, cancel := context.WithCancel(ctx)
+
 	return &handler{
-		ctx:     ctx,
-		srv:     srv,
-		rw:      rw,
-		codec:   encoding.GetCodec(proto.Name),
-		streams: map[uint64]chan *wrapped.Rpc{},
+		ctx:          ctx,
+		cancel:       cancel,
+		srv:          srv,
+		rw:           rw,
+		codec:        encoding.GetCodec(proto.Name),
+		streams:      map[uint64]chan *goatorepo.Rpc{},
+		writeChan:    make(chan *goatorepo.Rpc),
+		unaryRpcChan: make(chan unaryRpcArgs),
 	}
 }
 
 func (h *handler) serve() error {
+	defer h.cancel()
+
+	writeCtx, cancel := context.WithCancel(h.ctx)
+	defer cancel()
+
+	go func() {
+		for {
+			select {
+			case rpc := <-h.writeChan:
+				h.rw.Write(writeCtx, rpc)
+			case <-writeCtx.Done():
+				return
+			}
+		}
+	}()
+
+	unaryRpcCtx, unaryRpcCtxCancel := context.WithCancel(h.ctx)
+	defer unaryRpcCtxCancel()
+
+	const numRpcWorkers = 8
+
+	for i := 0; i < numRpcWorkers; i++ {
+		go func() {
+			for {
+				select {
+				case args := <-h.unaryRpcChan:
+					h.writeChan <- h.processUnaryRpc(args.info, args.md, args.rpc)
+				case <-unaryRpcCtx.Done():
+					return
+				}
+			}
+		}()
+	}
+
 	for {
 		rpc, err := h.rw.Read(h.ctx)
 		if err != nil {
@@ -167,15 +218,19 @@ func (h *handler) serve() error {
 			return err
 		}
 
+		if rpc.GetHeader().Destination != h.srv.id {
+			log.Error().
+				Msgf("Server %s: invalid destination %s", h.srv.id, rpc.GetHeader().Destination)
+			continue
+		}
+
 		si, known := h.srv.services[service]
 		if !known {
 			log.Error().Msgf("Server: unknown service, %s", service)
 			continue
 		}
 		if md, ok := si.methods[method]; ok {
-			resp := h.processUnaryRpc(si, md, rpc)
-			// Source,dest addresses
-			h.rw.Write(h.ctx, resp)
+			h.unaryRpcChan <- unaryRpcArgs{si, md, rpc}
 			continue
 		}
 		if sd, ok := si.streams[method]; ok {
@@ -189,8 +244,8 @@ func (h *handler) serve() error {
 func (h *handler) processUnaryRpc(
 	info *serviceInfo,
 	md *grpc.MethodDesc,
-	rpc *wrapped.Rpc,
-) *wrapped.Rpc {
+	rpc *goatorepo.Rpc,
+) *goatorepo.Rpc {
 	ctx := context.Background()
 
 	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
@@ -199,18 +254,18 @@ func (h *handler) processUnaryRpc(
 	}
 	defer cancel()
 
-	fullMethod := fmt.Sprintf("%s/%s", info.name, md.MethodName)
-	sts := newUnaryServerTransportStream(fullMethod)
+	fullMethod := fmt.Sprintf("/%s/%s", info.name, md.MethodName)
+	sts := server.NewUnaryServerTransportStream(fullMethod)
 	ctx = grpc.NewContextWithServerTransportStream(ctx, sts)
 
 	body := rpc.GetBody()
 
 	dec := func(msg interface{}) error {
-		if body.Data == nil {
+		if body.GetData() == nil {
 			return nil
 		}
 
-		if err := h.codec.Unmarshal(body.Data, msg); err != nil {
+		if err := h.codec.Unmarshal(body.GetData(), msg); err != nil {
 			return status.Error(codes.InvalidArgument, err.Error())
 		}
 		return nil
@@ -218,47 +273,47 @@ func (h *handler) processUnaryRpc(
 
 	resp, appErr := md.Handler(info.serviceImpl, ctx, dec, h.srv.unaryInterceptor)
 
-	// TODO: validate dest address really is us
-
 	respH := internal.ToKeyValue(sts.GetHeaders())
-	respHeader := &wrapped.RequestHeader{
+	respHeader := &goatorepo.RequestHeader{
 		Method:      fullMethod,
 		Headers:     respH,
 		Source:      rpc.Header.Destination,
 		Destination: rpc.Header.Source,
-		ProxyNext:   rpc.Header.ProxyRecord[0 : len(rpc.Header.ProxyRecord)-1],
 	}
-	respTrailer := &wrapped.Trailer{
+	if len(rpc.Header.ProxyRecord) > 1 {
+		respHeader.ProxyNext = rpc.Header.ProxyRecord[0 : len(rpc.Header.ProxyRecord)-1]
+	}
+	respTrailer := &goatorepo.Trailer{
 		Metadata: internal.ToKeyValue(sts.GetTrailers()),
 	}
 
-	var respStatus *wrapped.ResponseStatus
+	var respStatus *goatorepo.ResponseStatus
 
 	if appErr != nil {
 		st, ok := status.FromError(appErr)
 		if !ok {
 			st = status.FromContextError(appErr)
 		}
-		respStatus = &wrapped.ResponseStatus{
+		respStatus = &goatorepo.ResponseStatus{
 			Code:    st.Proto().GetCode(),
 			Message: st.Proto().GetMessage(),
 			Details: st.Proto().GetDetails(),
 		}
 	}
 
-	var respBody *wrapped.Body
+	var respBody *goatorepo.Body
 
 	if resp != nil {
 		data, err := h.codec.Marshal(resp)
 
 		if err == nil {
-			respBody = &wrapped.Body{
+			respBody = &goatorepo.Body{
 				Data: data,
 			}
 		}
 	}
 
-	return &wrapped.Rpc{
+	return &goatorepo.Rpc{
 		Id:      rpc.GetId(),
 		Header:  respHeader,
 		Status:  respStatus,
@@ -270,7 +325,7 @@ func (h *handler) processUnaryRpc(
 func (h *handler) processStreamingRpc(
 	info *serviceInfo,
 	sd *grpc.StreamDesc,
-	rpc *wrapped.Rpc,
+	rpc *goatorepo.Rpc,
 ) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -281,7 +336,7 @@ func (h *handler) processStreamingRpc(
 	}
 
 	streamId := rpc.Id
-	ch := make(chan *wrapped.Rpc, 1)
+	ch := make(chan *goatorepo.Rpc, 1)
 	h.streams[streamId] = ch
 
 	go h.runStream(info, sd, rpc, streamId, ch)
@@ -291,13 +346,20 @@ func (h *handler) processStreamingRpc(
 func (h *handler) runStream(
 	info *serviceInfo,
 	sd *grpc.StreamDesc,
-	rpc *wrapped.Rpc,
+	rpc *goatorepo.Rpc,
 	streamId uint64,
-	rCh chan *wrapped.Rpc,
+	rCh chan *goatorepo.Rpc,
 ) error {
-	ctx := context.Background()
-
 	defer h.unregisterStream(streamId)
+
+	if rpc.GetBody() != nil {
+		// The first Rpc in a stream is used to tell the server to start the stream;
+		// it must have an empty body. If this isn't the case, it must be because
+		// we've missed the first Rpc in the stream.
+		log.Info().Msgf("did not expect body: calling RST stream %d", streamId)
+		h.resetStream(rpc)
+		return nil
+	}
 
 	if rpc.GetTrailer() != nil {
 		// The client may send a trailer to end a stream after we've already ended
@@ -306,7 +368,7 @@ func (h *handler) runStream(
 		return nil
 	}
 
-	r := func(ctx context.Context) (*wrapped.Rpc, error) {
+	r := func(ctx context.Context) (*goatorepo.Rpc, error) {
 		select {
 		case msg, ok := <-rCh:
 			if !ok {
@@ -317,27 +379,37 @@ func (h *handler) runStream(
 			return nil, ctx.Err()
 		}
 	}
-	rw := internal.NewFnReadWriter(r, h.rw.Write)
+	rw := internal.NewFnReadWriter(r, func(ctx context.Context, r *goatorepo.Rpc) error {
+		h.writeChan <- r
+		return nil
+	})
 
-	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
+	ctx, cancel, err := contextFromHeaders(h.ctx, rpc.GetHeader())
 	if err != nil {
 		log.Panic().Err(err).Msg("failed to create newStream")
 	}
 	defer cancel()
 
 	si := &grpc.StreamServerInfo{
-		FullMethod:     fmt.Sprintf("%s/%s", info.name, sd.StreamName),
+		FullMethod:     fmt.Sprintf("/%s/%s", info.name, sd.StreamName),
 		IsClientStream: sd.ClientStreams,
 		IsServerStream: sd.ServerStreams,
 	}
 
-	stream, err := newServerStream(ctx, streamId, si.FullMethod, rw)
+	stream, err := server.NewServerStream(
+		ctx,
+		streamId,
+		si.FullMethod,
+		rpc.Header.Destination,
+		rpc.Header.Source,
+		rw,
+	)
 	if err != nil {
 		log.Error().Err(err).Msg("Server: newServerStream failed")
 		return err
 	}
 
-	sts := newServerTransportStream(si.FullMethod, stream)
+	sts := server.NewServerTransportStream(si.FullMethod, stream)
 	stream.SetContext(grpc.NewContextWithServerTransportStream(ctx, sts))
 
 	var appErr error
@@ -367,12 +439,36 @@ func (h *handler) unregisterStream(id uint64) {
 	delete(h.streams, id)
 }
 
+// resetStream instructs the caller to tear down and restart the stream. We call
+// this if something has gone irrecoverably wrong in the stream.
+func (h *handler) resetStream(rpc *goatorepo.Rpc) {
+	reset := &goatorepo.Rpc{
+		Id: rpc.GetId(),
+		Header: &goatorepo.RequestHeader{
+			Method:      rpc.GetHeader().GetMethod(),
+			Source:      rpc.GetHeader().GetDestination(),
+			Destination: rpc.GetHeader().GetSource(),
+		},
+		Status: &goatorepo.ResponseStatus{
+			Code:    int32(codes.Aborted),
+			Message: "RST stream",
+		},
+		Trailer: &goatorepo.Trailer{},
+	}
+
+	if len(rpc.Header.ProxyRecord) > 1 {
+		reset.Header.ProxyNext = rpc.Header.ProxyRecord[0 : len(rpc.Header.ProxyRecord)-1]
+	}
+
+	h.rw.Write(h.ctx, reset)
+}
+
 // contextFromHeaders returns a new incoming context with metadata populated
 // by the given request headers. If the given headers contain a GRPC-Timeout, it
 // is used to set the deadline on the returned context.
 func contextFromHeaders(
 	parent context.Context,
-	h *wrapped.RequestHeader,
+	h *goatorepo.RequestHeader,
 ) (context.Context, context.CancelFunc, error) {
 	cancel := func() {}
 	md, err := internal.ToMetadata(h.Headers)
@@ -382,7 +478,7 @@ func contextFromHeaders(
 	ctx := metadata.NewIncomingContext(parent, md)
 
 	for _, hdr := range h.Headers {
-		if hdr.Key == "GRPC-Timeout" {
+		if strings.ToLower(hdr.Key) == "grpc-timeout" {
 			if timeout, ok := parseGrpcTimeout(hdr.Value); ok {
 				ctx, cancel = context.WithTimeout(ctx, timeout)
 				break
