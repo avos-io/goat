@@ -79,7 +79,7 @@ And a response:
 ## Streaming
 
 Streaming RPCs need to additionally be able to signal streaming-start and streaming-stop concepts:
-* Starting is implicit by virtue of a new `id` being used for a method
+* Starting is explicit by virtue of a new `id` being used for a method, and the initial request having no body and no trailers
 * Stopping is always indicated -- in both directions -- by presence of the `trailer`
 
 Because streaming can be in any of three configurations (server, client, bidir), there are now cases where a request or response does not need to carry a `body`. Included below are examples of what requests and responses might flow in each case. Note that exact ordering of messages can differ from the examples below.
@@ -92,7 +92,7 @@ In this case the client sends just a single message, and initiates a streaming d
 3. Client 🠔 Server: `id`, `header`, `body` (repeated)
 4. Client 🠔 Server: `id`, `header`, `body`?, `status`?, `trailer`
 
-Items (1) and (2) can be either separate or combined into one message, and (2) could follow the first server response (3). It is valid for a server to respond without ever specifying a body, and only ever specifying `trailer` (and probably `status`).
+It is valid for a server to respond without ever specifying a body, and only ever specifying `trailer` (and probably `status`).
 
 ### Client stream
 
