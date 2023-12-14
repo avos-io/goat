@@ -17,13 +17,15 @@ tasks:
       - task: gen-mocks
 
   test:
-    deps: [gen-mocks]
+    deps:
+      - gen-mocks
+      - install-deps
     desc: |
       Test all targets.
     vars:
       FLAGS: '{{default "-cover -timeout 30s" .FLAGS}}'
     cmds:
-      - exhaustive -default-signifies-exhaustive ./...
+      - ./.bin/exhaustive -default-signifies-exhaustive ./...
       - go test {{.FLAGS}} ./...
 
   build:
@@ -39,29 +41,31 @@ tasks:
       - rm -fr gen/*
 
   gen-proto:
-    cmds: 
-      - >-
-        docker run --rm
-        --volume "{{.TASKFILE_DIR}}:/workspace"
-        --workdir /workspace
-        {{if eq OS "linux"}}
-        --user $(id -u):$(id -g)
-        --env XDG_CACHE_HOME=/workspace
-        {{end}}
-        bufbuild/buf:1.26.1 generate .
-      - touch gen/proto.touch
-    generates:
-      - gen/proto.touch
+    method: checksum
+    deps:
+      - install-deps
+    cmds:
+      - env "PATH=.bin:$PATH" buf generate
     sources:
-      - "**/*.proto"
+      - "goatorepo/*.proto"
+      - "testrepo/*.proto"
+      - buf.gen.yaml
+      - buf.yaml
+      - buf.lock
+      - Taskfile.yml
+
   gen-mocks:
     deps: [gen-proto]
     cmds:
-      - go run {{.MOCKERY}} --log-level=warn
+      - .bin/mockery --log-level=warn
       - touch gen/mockery.stamp
     sources:
       - "internal/*/*.go"
       - "goat.go"
       - ".mockery.yml"
     generates:
-      - gen/mockery.stamp
+      - gen/mocks/**/*.go
+
+  install-deps:
+    cmds:
+      - bash scripts/bootstrap

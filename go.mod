@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/golang/protobuf v1.5.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
-	github.com/rs/zerolog v1.27.0
+	github.com/rs/zerolog v1.28.0
 	github.com/stretchr/testify v1.4.0
 	golang.org/x/sync v0.3.0
 	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013
@@ -14,10 +14,7 @@ require (
 	nhooyr.io/websocket v1.8.7
 )
 
-require (
-	github.com/golang/protobuf v1.5.2 // indirect
-	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.3.0 // indirect
-)
+require github.com/golang/protobuf v1.5.2 // indirect
 
 require (
 	github.com/benbjohnson/clock v1.3.0
