@@ -16,7 +16,7 @@ import (
 	"nhooyr.io/websocket"
 )
 
-func Sam(srv *goat.Server) http.HandlerFunc {
+func WebsocketAcceptor(srv *goat.Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 			Subprotocols: []string{"echo"},
@@ -117,7 +117,7 @@ func main() {
 	log.Printf("listening on http://%v", l.Addr())
 
 	s := &http.Server{
-		Handler:      http.HandlerFunc(Sam(srv)),
+		Handler:      http.HandlerFunc(WebsocketAcceptor(srv)),
 		ReadTimeout:  time.Second * 10,
 		WriteTimeout: time.Second * 10,
 	}
