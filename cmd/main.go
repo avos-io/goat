@@ -93,6 +93,11 @@ func (testService) Unary(ctx context.Context, m *testproto.Msg) (*testproto.Msg,
 	)
 	grpc.SetTrailer(ctx, trailer)
 
+	header := metadata.Pairs(
+		"foo", "baz",
+	)
+	grpc.SetHeader(ctx, header)
+
 	return &testproto.Msg{Value: m.GetValue() * 2}, nil
 }
 
