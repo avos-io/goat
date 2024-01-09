@@ -4,6 +4,7 @@ run: once
 
 vars:
   MOCKERY: github.com/vektra/mockery/v2@v2.34.2
+  EXHAUSTIVE: github.com/nishanths/exhaustive/cmd/exhaustive@v0.12.0
 
 tasks:
   default:
@@ -25,7 +26,7 @@ tasks:
     vars:
       FLAGS: '{{default "-cover -timeout 30s" .FLAGS}}'
     cmds:
-      - ./.bin/exhaustive -default-signifies-exhaustive ./...
+      - go run {{.EXHAUSTIVE}} -default-signifies-exhaustive ./...
       - go test {{.FLAGS}} ./...
 
   build:
