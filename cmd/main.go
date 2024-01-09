@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -16,6 +18,10 @@ import (
 	"nhooyr.io/websocket"
 )
 
+type myClientIden string
+
+const myHttpResponseAddr myClientIden = "http-remote-addr"
+
 func WebsocketAcceptor(srv *goat.Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
@@ -24,18 +30,20 @@ func WebsocketAcceptor(srv *goat.Server) http.HandlerFunc {
 		if err != nil {
 			return
 		}
-		// defer c.CloseNow()
 
-		//if c.Subprotocol() != "echo" {
-		//	c.Close(websocket.StatusPolicyViolation, "client must speak the echo subprotocol")
-		//	return
-		//}
+		log.Printf("%v: connected\n", r.RemoteAddr)
 
+		ctx := context.WithValue(r.Context(), myHttpResponseAddr, r.RemoteAddr)
 		rrw := goat.NewGoatOverWebsocket(c)
+		err = srv.Serve(ctx, rrw)
 
-		srv.Serve(rrw)
+		if errors.Is(err, io.EOF) || websocket.CloseStatus(err) == 1000 {
+			log.Printf("%v: closed\n", r.RemoteAddr)
+		} else {
+			log.Printf("%v: unexpected close due to: %v\n", r.RemoteAddr, err)
+		}
 
-		c.Close(websocket.StatusAbnormalClosure, "xxx")
+		c.Close(websocket.StatusAbnormalClosure, err.Error())
 	}
 }
 
@@ -49,8 +57,6 @@ func (testService) BidiStream(srv testproto.TestService_BidiStreamServer) error 
 		if err != nil {
 			break
 		}
-
-		log.Printf("BidiStream got %v\n", msg.Value)
 
 		for i := 0; i < int(msg.Value); i++ {
 			srv.Send(&testproto.Msg{Value: int32(i)})
@@ -102,11 +108,30 @@ func (testService) Unary(ctx context.Context, m *testproto.Msg) (*testproto.Msg,
 }
 
 func main() {
-	goat.NewServer("srv0")
-	sam := testproto.Msg{}
-	sam.GetValue()
-
-	srv := goat.NewServer("")
+	srv := goat.NewServer("",
+		goat.UnaryInterceptor(
+			func(
+				ctx context.Context,
+				req interface{},
+				info *grpc.UnaryServerInfo,
+				handler grpc.UnaryHandler,
+			) (resp interface{}, err error) {
+				clid := ctx.Value(myHttpResponseAddr)
+				log.Printf("%v: unary %s\n", clid, info.FullMethod)
+				return handler(ctx, req)
+			}),
+		goat.StreamInterceptor(
+			func(
+				srv interface{},
+				ss grpc.ServerStream,
+				info *grpc.StreamServerInfo,
+				handler grpc.StreamHandler,
+			) error {
+				clid := ss.Context().Value(myHttpResponseAddr)
+				log.Printf("%v: stream %s\n", clid, info.FullMethod)
+				return handler(srv, ss)
+			}),
+	)
 	testproto.RegisterTestServiceServer(srv, &testService{})
 
 	l, err := net.Listen("tcp", os.Args[1])

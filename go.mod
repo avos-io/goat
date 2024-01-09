@@ -3,7 +3,6 @@ module github.com/avos-io/goat
 go 1.19
 
 require (
-	github.com/golang/protobuf v1.5.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/rs/zerolog v1.28.0
 	github.com/stretchr/testify v1.4.0
@@ -11,14 +10,15 @@ require (
 	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013
 	google.golang.org/grpc v1.50.0
 	google.golang.org/protobuf v1.31.0
-	nhooyr.io/websocket v1.8.7
+	nhooyr.io/websocket v1.8.10
 )
+
+require github.com/golang/protobuf v1.5.2 // indirect
 
 require (
 	github.com/benbjohnson/clock v1.3.0
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/go-cmp v0.5.8 // indirect
-	github.com/klauspost/compress v1.10.3 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/pkg/errors v0.9.1

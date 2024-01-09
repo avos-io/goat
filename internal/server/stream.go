@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
@@ -194,14 +195,12 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 func (ss *serverStream) RecvMsg(m interface{}) error {
 	rpc, err := ss.rw.Read(ss.ctx)
 	if err != nil {
-		log.Error().Err(err).Msg("RecvMsg Read")
-		return err
+		return errors.Wrap(err, "RecvMsg Read")
 	}
 
 	if rpc.GetTrailer() != nil {
 		st := rpc.GetStatus()
 		if st.GetCode() == int32(codes.OK) {
-			log.Info().Msg("RecvMsg: EOF")
 			return io.EOF
 		}
 		sp := spb.Status{
@@ -210,8 +209,7 @@ func (ss *serverStream) RecvMsg(m interface{}) error {
 			Details: st.GetDetails(),
 		}
 		err := status.FromProto(&sp).Err()
-		log.Error().Err(err).Msg("RecvMsg")
-		return err
+		return errors.Wrap(err, "RecvMsg")
 	}
 
 	return ss.codec.Unmarshal(rpc.GetBody().GetData(), m)

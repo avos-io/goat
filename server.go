@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -122,9 +123,9 @@ func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 	s.services[sd.ServiceName] = info
 }
 
-func (s *Server) Serve(rw RpcReadWriter) error {
+func (s *Server) Serve(ctx context.Context, rw RpcReadWriter) error {
 	h := newHandler(s.ctx, s, rw)
-	return h.serve()
+	return h.serve(ctx)
 }
 
 type unaryRpcArgs struct {
@@ -165,7 +166,7 @@ func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
 	}
 }
 
-func (h *handler) serve() error {
+func (h *handler) serve(clientCtx context.Context) error {
 	defer h.cancel()
 
 	writeCtx, cancel := context.WithCancel(h.ctx)
@@ -192,7 +193,7 @@ func (h *handler) serve() error {
 			for {
 				select {
 				case args := <-h.unaryRpcChan:
-					h.writeChan <- h.processUnaryRpc(args.info, args.md, args.rpc)
+					h.writeChan <- h.processUnaryRpc(clientCtx, args.info, args.md, args.rpc)
 				case <-unaryRpcCtx.Done():
 					return
 				}
@@ -203,8 +204,7 @@ func (h *handler) serve() error {
 	for {
 		rpc, err := h.rw.Read(h.ctx)
 		if err != nil {
-			log.Error().Err(err).Msg("Server: read err")
-			return err
+			return errors.Wrap(err, "read error")
 		}
 
 		if rpc.GetHeader() == nil {
@@ -214,19 +214,18 @@ func (h *handler) serve() error {
 		rawMethod := rpc.GetHeader().Method
 		service, method, err := parseRawMethod(rawMethod)
 		if err != nil {
-			log.Error().Msgf("Server: failed to parse %s", rawMethod)
-			return err
+			return errors.Wrapf(err, "failed to parse %s", rawMethod)
 		}
 
 		if rpc.GetHeader().Destination != h.srv.id {
-			log.Error().
+			log.Warn().
 				Msgf("Server %s: invalid destination %s", h.srv.id, rpc.GetHeader().Destination)
 			continue
 		}
 
 		si, known := h.srv.services[service]
 		if !known {
-			log.Error().Msgf("Server: unknown service, %s", service)
+			log.Warn().Msgf("Server: unknown service, %s", service)
 			continue
 		}
 		if md, ok := si.methods[method]; ok {
@@ -234,7 +233,7 @@ func (h *handler) serve() error {
 			continue
 		}
 		if sd, ok := si.streams[method]; ok {
-			h.processStreamingRpc(si, sd, rpc)
+			h.processStreamingRpc(clientCtx, si, sd, rpc)
 			continue
 		}
 		log.Warn().Msgf("Server: unhandled method, %s %s", service, method)
@@ -242,13 +241,12 @@ func (h *handler) serve() error {
 }
 
 func (h *handler) processUnaryRpc(
+	clientCtx context.Context,
 	info *serviceInfo,
 	md *grpc.MethodDesc,
 	rpc *goatorepo.Rpc,
 ) *goatorepo.Rpc {
-	ctx := context.Background()
-
-	ctx, cancel, err := contextFromHeaders(ctx, rpc.GetHeader())
+	ctx, cancel, err := contextFromHeaders(clientCtx, rpc.GetHeader())
 	if err != nil {
 		log.Panic().Err(err).Msg("Server: failed to get context from headers")
 	}
@@ -323,6 +321,7 @@ func (h *handler) processUnaryRpc(
 }
 
 func (h *handler) processStreamingRpc(
+	clientCtx context.Context,
 	info *serviceInfo,
 	sd *grpc.StreamDesc,
 	rpc *goatorepo.Rpc,
@@ -339,11 +338,12 @@ func (h *handler) processStreamingRpc(
 	ch := make(chan *goatorepo.Rpc, 1)
 	h.streams[streamId] = ch
 
-	go h.runStream(info, sd, rpc, streamId, ch)
+	go h.runStream(clientCtx, info, sd, rpc, streamId, ch)
 	return nil
 }
 
 func (h *handler) runStream(
+	clientCtx context.Context,
 	info *serviceInfo,
 	sd *grpc.StreamDesc,
 	rpc *goatorepo.Rpc,
@@ -364,7 +364,6 @@ func (h *handler) runStream(
 	if rpc.GetTrailer() != nil {
 		// The client may send a trailer to end a stream after we've already ended
 		// it, in which case we don't want to lazily create a new stream here.
-		log.Info().Msgf("ignoring client EOF for torn-down stream %d", streamId)
 		return nil
 	}
 
@@ -384,9 +383,9 @@ func (h *handler) runStream(
 		return nil
 	})
 
-	ctx, cancel, err := contextFromHeaders(h.ctx, rpc.GetHeader())
+	ctx, cancel, err := contextFromHeaders(clientCtx, rpc.GetHeader())
 	if err != nil {
-		log.Panic().Err(err).Msg("failed to create newStream")
+		log.Panic().Err(err).Msg("Server: failed to get context from headers")
 	}
 	defer cancel()
 
