@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/avos-io/goat"
 	"github.com/avos-io/goat/gen/testproto"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"nhooyr.io/websocket"
 )
@@ -82,7 +84,15 @@ func (testService) ServerStream(msg *testproto.Msg, srv testproto.TestService_Se
 
 	return nil
 }
-func (testService) Unary(c context.Context, m *testproto.Msg) (*testproto.Msg, error) {
+
+func (testService) Unary(ctx context.Context, m *testproto.Msg) (*testproto.Msg, error) {
+	trailer := metadata.Pairs(
+		"timestamp", time.Now().String(),
+		"foo", "bar",
+		"input", fmt.Sprintf("%d", m.GetValue()),
+	)
+	grpc.SetTrailer(ctx, trailer)
+
 	return &testproto.Msg{Value: m.GetValue() * 2}, nil
 }
 
