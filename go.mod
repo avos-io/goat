@@ -14,8 +14,6 @@ require (
 	nhooyr.io/websocket v1.8.7
 )
 
-require github.com/golang/protobuf v1.5.2 // indirect
-
 require (
 	github.com/benbjohnson/clock v1.3.0
 	github.com/davecgh/go-spew v1.1.1 // indirect
