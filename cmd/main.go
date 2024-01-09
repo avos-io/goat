@@ -108,7 +108,7 @@ func (testService) Unary(ctx context.Context, m *testproto.Msg) (*testproto.Msg,
 }
 
 func main() {
-	srv := goat.NewServer("",
+	srv := goat.NewServer("e2e",
 		goat.UnaryInterceptor(
 			func(
 				ctx context.Context,
