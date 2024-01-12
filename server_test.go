@@ -1,6 +1,7 @@
 package goat
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -33,7 +34,7 @@ func TestStop(t *testing.T) {
 
 	done := make(chan struct{}, 1)
 	go func() {
-		srv.Serve(conn)
+		srv.Serve(context.Background(), conn)
 		done <- struct{}{}
 	}()
 
@@ -65,7 +66,7 @@ func TestUnary(t *testing.T) {
 		conn := testutil.NewTestConn()
 
 		go func() {
-			srv.Serve(conn)
+			srv.Serve(context.Background(), conn)
 		}()
 
 		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
@@ -104,7 +105,7 @@ func TestUnary(t *testing.T) {
 		conn := testutil.NewTestConn()
 
 		go func() {
-			srv.Serve(conn)
+			srv.Serve(context.Background(), conn)
 		}()
 
 		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
@@ -154,7 +155,7 @@ func TestServerStream(t *testing.T) {
 		conn := testutil.NewTestConn()
 
 		go func() {
-			srv.Serve(conn)
+			srv.Serve(context.Background(), conn)
 		}()
 
 		// Open stream
@@ -223,7 +224,7 @@ func TestServerStream(t *testing.T) {
 		conn := testutil.NewTestConn()
 
 		go func() {
-			srv.Serve(conn)
+			srv.Serve(context.Background(), conn)
 		}()
 
 		// Just start sending data with no 'open stream'-- this indicates a broken

@@ -30,7 +30,7 @@ func newSimulatedServer(id string, transport goat.RpcReadWriter) *simulatedServe
 	srv := goat.NewServer(id)
 
 	go func() {
-		err := srv.Serve(transport)
+		err := srv.Serve(context.Background(), transport)
 		panic(err)
 	}()
 
@@ -317,7 +317,7 @@ func TestRealProxy(t *testing.T) {
 			if id == serverAddress {
 				ps3, ps4 := net.Pipe()
 
-				go srv.Serve(testutil.NewGoatOverPipe(ps4))
+				go srv.Serve(context.Background(), testutil.NewGoatOverPipe(ps4))
 
 				return testutil.NewGoatOverPipe(ps3), nil
 			}

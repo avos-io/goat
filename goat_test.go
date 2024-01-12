@@ -801,7 +801,7 @@ func setupOpts(
 	testproto.RegisterTestServiceServer(server, s)
 
 	go func() {
-		server.Serve(serverConn)
+		server.Serve(context.Background(), serverConn)
 	}()
 
 	client := testproto.NewTestServiceClient(

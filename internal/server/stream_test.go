@@ -418,7 +418,7 @@ func TestRecvMsg(t *testing.T) {
 		rw.EXPECT().Read(ctx).Return(nil, errTest)
 
 		var got testproto.Msg
-		is.Equal(errTest, stream.RecvMsg(&got))
+		is.Contains(stream.RecvMsg(&got).Error(), errTest.Error())
 	})
 
 	t.Run("RecvMsg stream end: OK", func(t *testing.T) {
