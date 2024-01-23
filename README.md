@@ -48,7 +48,7 @@ A _transport implementation_ is one implementing this interface; two example imp
 
 GOAT allows clients to include an identifying name, and to specify the name of a server destination:
 * Client source names are not used for anything inside the GOAT implementation, and may be used by users of this library for cases like complex proxying.
-* Destination and server names must match, else GOAT will reject an RPC. If names are not desirable, then the client and server should specify an empty string for the destion and server names respectively.
+* Destination and server names must match, else GOAT will reject an RPC. If names are not desirable, then the client and server should specify an empty string for the destination and server names respectively.
 
 Names are designed for improved debugging, logging, and ability to create more complex routing or proxying setups.
 
