@@ -20,7 +20,7 @@ Work in progress. Come back here later.
 
 # GOAT for Golang
 
-GOAT works with the standard GRPC libraries for Go, implementing the [ClientConnInterface](https://pkg.go.dev/google.golang.org/grpc#ClientConnInterface) and `???` interfaces for clients and servers respectively.
+GOAT works with the standard GRPC libraries for Go, implementing the [ClientConnInterface](https://pkg.go.dev/google.golang.org/grpc#ClientConnInterface) and a `Server` (that handles `*ServiceDesc`) interfaces for clients and servers respectively.
 
 The transport interface is very minimal:
 
