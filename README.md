@@ -1,22 +1,148 @@
-# goat
+# 🐐 GOAT 🐐
 
-GOAT is gRPC Over Any Transport.
+GOAT is gRPC Over Any Transport. The standard GRPC implementations are quite closely tied to HTTP/2, but there are cases where such a transport is not optimal or not possible. GOAT is an attempt at a common abstraction layer over the networking portion, allowing GRPC to work over any reliable transport: WebSockets, TCP, a `pipe(2)`, etc.
 
-The basic idea is to serialise a gRPC request into a wrapper protobuf that also includes any metadata needed to describe the request. We can then implement gRPC over any transport capable of providing an interface for reading and writing those wrapped RPcs. It's just like JSON-RPC, but using protobufs and for gRPC.
+The basic idea is to serialise a gRPC request into a wrapper protobuf that also includes any metadata needed to describe the request. The wrapper contains the same sort of information provided in HTTP/2 headers, trailers, method name, and stream ID. The libraries in this and linked repositories then use this to provide client and server interfaces.
 
 # Language implementations
 
 ## Golang
 
-Golang is our canonical language for GOAT and is implemented in this repo.
+Golang is our canonical language for GOAT and is implemented in this repo. See below for more information on using it.
 
 ## Typescript / ECMAScript
 
-See [here](https://github.com/avos-io/goat-es).
+See the [goat-es](https://github.com/avos-io/goat-es) repository.
 
 ## Kotlin
 
-TODO
+Work in progress. Come back here later.
+
+# GOAT for Golang
+
+GOAT works with the standard GRPC libraries for Go, implementing the [ClientConnInterface](https://pkg.go.dev/google.golang.org/grpc#ClientConnInterface) and `???` interfaces for clients and servers respectively.
+
+The transport interface is very minimal:
+
+```go
+type RpcReadWriter interface {
+	Read(context.Context) (*goatorepo.Rpc, error)
+	Write(context.Context, *goatorepo.Rpc) error
+}
+```
+
+See [Client](#client) below on how to use a GOAT client. See [Server](#server) below on how to use a GOAT server.
+
+----
+
+## Concepts
+
+### Transports
+
+A _transport implementation_ is one implementing this interface; two example implementations exist in this repo:
+* A simple websocket-based tranport in `NewGoatOverWebsocket()`. This allows creating a new GOAT transport given a websocket connection from the [nhooyr.io/websocket](https://nhooyr.io/websocket) Golang module.
+* The unit testing code has several transport implementations, e.g. `NewGoatOverPipe()` which works over any `net.Conn` including those returned by [net.Pipe()](https://pkg.go.dev/net#Pipe).
+* An example transport over HTTP 1/1.1 in `NewGoatOverHttp()`. You probably don't want to use this, but it serves as another example of implementing a transport.
+
+### Client and server names
+
+GOAT allows clients to include an identifying name, and to specify the name of a server destination:
+* Client source names are not used for anything inside the GOAT implementation, and may be used by users of this library for cases like complex proxying.
+* Destination and server names must match, else GOAT will reject an RPC. If names are not desirable, then the client and server should specify an empty string for the destion and server names respectively.
+
+Names are designed for improved debugging, logging, and ability to create more complex routing or proxying setups.
+
+### Client
+
+The client side only requires a transport implementation instance, and then provides regular GRPC usage like normal.
+
+### Server
+
+The server side allows binding GRPC services like normal. It is then invoked to serve each client individually.
+
+### Proxy
+
+It is possible to build proxies much like HTTP reverse proxies can be used with GRPC over HTTP.
+
+----
+
+## Client
+
+Consider the example regular Go GRPC example code as follows - taken from [the GRPC docs](https://grpc.io/docs/languages/go/basics/).
+
+```go
+var opts []grpc.DialOption
+// ...
+conn, err := grpc.Dial(*serverAddr, opts...)
+if err != nil {
+    // ...
+}
+defer conn.Close()
+
+client := pb.NewRouteGuideClient(conn)
+
+feature, err := client.GetFeature(context.Background(), &pb.Point{409146138, -746188906})
+if err != nil {
+    // ...
+}
+```
+
+To change this to use a GOAT based transport, we simply change it like so:
+
+```go
+websock, _, err := websocket.Dial(ctx, "ws://localhost:8080", nil)
+if err != nil {
+	// ...
+}
+defer websock.CloseNow()
+
+var opts []goat.DialOption
+// ...
+goatConn := goat.NewGoatOverWebsocket(websock)
+conn := goat.NewClientConn(goatConn, "", "srv", opts...)
+
+client := pb.NewRouteGuideClient(conn)
+
+feature, err := client.GetFeature(context.Background(), &pb.Point{409146138, -746188906})
+if err != nil {
+    // ...
+}
+```
+
+GOAT is used in two ways then: creating a new `RpcReadWriter` (in this case via `goat.NewGoatOverWebsocket()`) and then using `goat.NewClientConn()`. This returns something that implements `ClientConnInterface`, satisfying the needs of the generated code that creates a new GRPC service client.
+
+## Server
+
+Consider the example regular Go GRPC example code as follows - taken from [the GRPC docs](https://grpc.io/docs/languages/go/basics/).
+
+```go
+lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+if err != nil {
+    log.Fatalf("failed to listen: %v", err)
+}
+var opts []grpc.ServerOption
+// ...
+grpcServer := grpc.NewServer(opts...)
+pb.RegisterRouteGuideServer(grpcServer, newServer())
+grpcServer.Serve(lis)
+```
+
+Rather than `grpc.NewServer()` we use `goat.NewServer()`. 
+
+```go
+// ...
+grpcServer := goat.NewServer("srv")
+pb.RegisterRouteGuideServer(grpcServer, newServer())
+// ...
+// For each new client connection coming in, we call grpcServer.Serve():
+grpcServer.Serve(context.TODO(), clientRpcReadWriter)
+```
+
+### Proxy
+
+GOAT is designed to be able to build proxies in the same manner as HTTP reverse proxies. This Golang library supports such use-cases via the `goat.NewProxy()` function.
+
+This is an advanced feature and not yet documented. It is recommended to read the code and tests in this area.
 
 # Protocol
 
