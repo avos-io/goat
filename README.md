@@ -62,7 +62,7 @@ The server side allows binding GRPC services like normal. It is then invoked to 
 
 ### Proxy
 
-It is possible to build proxies much like HTTP reverse proxies can be used with GRPC over HTTP.
+It is possible to build proxies, much like HTTP reverse proxies can be used with GRPC over HTTP.
 
 ----
 
