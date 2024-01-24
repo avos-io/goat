@@ -213,20 +213,20 @@ Because streaming can be in any of three configurations (server, client, bidir),
 ### Server stream
 
 In this case the client sends just a single message, and initiates a streaming download. Therefore the requests/responses look something like:
-1. Client ➞ Server: `id`, `header`
-2. Client ➞ Server: `id`, `header`, `body`?, `trailer`
-3. Client 🠔 Server: `id`, `header`, `body` (repeated)
-4. Client 🠔 Server: `id`, `header`, `body`?, `status`?, `trailer`
+1. Client ⟶ Server: `id`, `header`
+2. Client ⟶ Server: `id`, `header`, `body`?, `trailer`
+3. Client ⟵ Server: `id`, `header`, `body` (repeated)
+4. Client ⟵ Server: `id`, `header`, `body`?, `status`?, `trailer`
 
 It is valid for a server to respond without ever specifying a body, and only ever specifying `trailer` (and probably `status`).
 
 ### Client stream
 
 In this case the client uploads data to the server, which itself does not respond with any data:
-1. Client ➞ Server: `id`, `header`
-2. Client ➞ Server: `id`, `header`, `body` (repeated)
-3. Client ➞ Server: `id`, `header`, `status`?, `trailer`
-4. Client 🠔 Server: `id`,  `header`, `body`, `status`?, `trailer`
+1. Client ⟶ Server: `id`, `header`
+2. Client ⟶ Server: `id`, `header`, `body` (repeated)
+3. Client ⟶ Server: `id`, `header`, `status`?, `trailer`
+4. Client ⟵ Server: `id`,  `header`, `body`, `status`?, `trailer`
 
 It is valid for the client to specify a `status` to the server when it stops streaming, allowing the server to disambiguate expected and unexpected cases of the streaming stopping.
 
@@ -235,10 +235,10 @@ Once the client finishes streaming by specifying a `trailer`, the server can res
 ### Bidirectional stream
 
 Bidirectional streams allow data-flow in both directions between clients and servers:
-1. Client ➞ Server: `id`, `header`
-2. Client ➞ Server: `id`, `header`, `body` (repeated)
-3. Client 🠔 Server: `id`, `header`, `body` (repeated)
-4. Client 🠔 Server: `id`, `header`, `status`?, `trailer`
-5. Client ➞ Server: `id`, `header`, `status`?, `trailer`
+1. Client ⟶ Server: `id`, `header`
+2. Client ⟶ Server: `id`, `header`, `body` (repeated)
+3. Client ⟵ Server: `id`, `header`, `body` (repeated)
+4. Client ⟵ Server: `id`, `header`, `status`?, `trailer`
+5. Client ⟶ Server: `id`, `header`, `status`?, `trailer`
 
 The order of closing is up to the application.
