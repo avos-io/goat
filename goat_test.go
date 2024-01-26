@@ -276,7 +276,7 @@ func TestServerStream(t *testing.T) {
 		streamInterceptor2 := grpcMocks.NewMockStreamServerInterceptor(t)
 		streamInterceptor2.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Times(1).Run(
 			func(args mock.Arguments) {
-				order = append(order, "1")
+				order = append(order, "2")
 			},
 		)
 
@@ -303,7 +303,7 @@ func TestServerStream(t *testing.T) {
 			recv, err := stream.Recv()
 			if err == io.EOF {
 				is.Equal(exp, sent.GetValue())
-				return
+				break
 			}
 			is.Equal(exp, recv.GetValue())
 			exp++
