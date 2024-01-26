@@ -1,3 +1,4 @@
+gen/mockery.stamp
 .task
 .bin
 buf
