@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/avos-io/goat"
+	grpcMocks "github.com/avos-io/goat/gen/grpc/mocks"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/gen/testproto/mocks"
 	"github.com/avos-io/goat/internal/testutil"
@@ -73,6 +74,67 @@ func TestUnary(t *testing.T) {
 		reply, err := client.Unary(ctx, &testproto.Msg{Value: 4})
 		is.Nil(reply) // we don't bother decoding the body
 		is.Error(err)
+	})
+
+	t.Run("Interceptor", func(t *testing.T) {
+		is := require.New(t)
+
+		service := mocks.NewMockTestServiceServer(t)
+		service.EXPECT().Unary(mock.Anything, mock.Anything).Return(nil, errTest)
+
+		unaryInterceptor := grpcMocks.NewMockUnaryServerInterceptor(t)
+		unaryInterceptor.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Times(1)
+
+		client, ctx, teardown := setupOpts(service, []goat.DialOption{}, []goat.ServerOption{
+			goat.UnaryInterceptor(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+				unaryInterceptor.MethodCalled("Execute", ctx, req, info, handler)
+				return handler(ctx, req)
+			}),
+		})
+		defer teardown()
+
+		reply, err := client.Unary(ctx, &testproto.Msg{Value: 4})
+		is.Error(err)
+		is.Nil(reply)
+	})
+
+	t.Run("Chained interceptor", func(t *testing.T) {
+		is := require.New(t)
+
+		service := mocks.NewMockTestServiceServer(t)
+		service.EXPECT().Unary(mock.Anything, mock.Anything).Return(nil, errTest)
+
+		order := make([]string, 0)
+
+		unaryInterceptor1 := grpcMocks.NewMockUnaryServerInterceptor(t)
+		unaryInterceptor1.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Times(1).Run(func(args mock.Arguments) {
+			order = append(order, "1")
+		})
+
+		unaryInterceptor2 := grpcMocks.NewMockUnaryServerInterceptor(t)
+		unaryInterceptor2.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Times(1).Run(func(args mock.Arguments) {
+			order = append(order, "2")
+		})
+
+		client, ctx, teardown := setupOpts(service, []goat.DialOption{}, []goat.ServerOption{
+			goat.ChainUnaryInterceptor(
+				func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+					unaryInterceptor1.MethodCalled("Execute", ctx, req, info, handler)
+					return handler(ctx, req)
+				},
+				func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+					unaryInterceptor2.MethodCalled("Execute", ctx, req, info, handler)
+					return handler(ctx, req)
+				},
+			),
+		})
+		defer teardown()
+
+		reply, err := client.Unary(ctx, &testproto.Msg{Value: 4})
+		is.Error(err)
+		is.Nil(reply)
+
+		is.Equal([]string{"1", "2"}, order)
 	})
 }
 
