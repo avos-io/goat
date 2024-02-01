@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/avos-io/goat"
+	grpcMocks "github.com/avos-io/goat/gen/grpc/mocks"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/gen/testproto/mocks"
 	"github.com/avos-io/goat/internal/testutil"
@@ -73,6 +74,67 @@ func TestUnary(t *testing.T) {
 		reply, err := client.Unary(ctx, &testproto.Msg{Value: 4})
 		is.Nil(reply) // we don't bother decoding the body
 		is.Error(err)
+	})
+
+	t.Run("Interceptor", func(t *testing.T) {
+		is := require.New(t)
+
+		service := mocks.NewMockTestServiceServer(t)
+		service.EXPECT().Unary(mock.Anything, mock.Anything).Return(nil, errTest)
+
+		unaryInterceptor := grpcMocks.NewMockUnaryServerInterceptor(t)
+		unaryInterceptor.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Times(1)
+
+		client, ctx, teardown := setupOpts(service, []goat.DialOption{}, []goat.ServerOption{
+			goat.UnaryInterceptor(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+				unaryInterceptor.MethodCalled("Execute", ctx, req, info, handler)
+				return handler(ctx, req)
+			}),
+		})
+		defer teardown()
+
+		reply, err := client.Unary(ctx, &testproto.Msg{Value: 4})
+		is.Error(err)
+		is.Nil(reply)
+	})
+
+	t.Run("Chained interceptor", func(t *testing.T) {
+		is := require.New(t)
+
+		service := mocks.NewMockTestServiceServer(t)
+		service.EXPECT().Unary(mock.Anything, mock.Anything).Return(nil, errTest)
+
+		order := make([]string, 0)
+
+		unaryInterceptor1 := grpcMocks.NewMockUnaryServerInterceptor(t)
+		unaryInterceptor1.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Times(1).Run(func(args mock.Arguments) {
+			order = append(order, "1")
+		})
+
+		unaryInterceptor2 := grpcMocks.NewMockUnaryServerInterceptor(t)
+		unaryInterceptor2.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Times(1).Run(func(args mock.Arguments) {
+			order = append(order, "2")
+		})
+
+		client, ctx, teardown := setupOpts(service, []goat.DialOption{}, []goat.ServerOption{
+			goat.ChainUnaryInterceptor(
+				func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+					unaryInterceptor1.MethodCalled("Execute", ctx, req, info, handler)
+					return handler(ctx, req)
+				},
+				func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+					unaryInterceptor2.MethodCalled("Execute", ctx, req, info, handler)
+					return handler(ctx, req)
+				},
+			),
+		})
+		defer teardown()
+
+		reply, err := client.Unary(ctx, &testproto.Msg{Value: 4})
+		is.Error(err)
+		is.Nil(reply)
+
+		is.Equal([]string{"1", "2"}, order)
 	})
 }
 
@@ -137,6 +199,117 @@ func TestServerStream(t *testing.T) {
 			is.Error(err)
 			is.Nil(recv)
 		}
+	})
+
+	t.Run("Interceptor", func(t *testing.T) {
+		is := require.New(t)
+
+		sent := &testproto.Msg{Value: 10}
+
+		service := mocks.NewMockTestServiceServer(t)
+		service.EXPECT().ServerStream(mock.Anything, mock.Anything).
+			Run(
+				func(msg *testproto.Msg, stream testproto.TestService_ServerStreamServer) {
+					v := msg.GetValue()
+					assert.Equal(t, sent.GetValue(), v)
+					for i := 1; i < int(v); i++ {
+						stream.Send(&testproto.Msg{Value: int32(i)})
+					}
+				},
+			).
+			Return(nil)
+
+		streamInterceptor := grpcMocks.NewMockStreamServerInterceptor(t)
+		streamInterceptor.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Times(1)
+
+		client, ctx, teardown := setupOpts(service, []goat.DialOption{}, []goat.ServerOption{
+			goat.StreamInterceptor(
+				func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+					streamInterceptor.MethodCalled("Execute", srv, ss)
+					return handler(srv, ss)
+				},
+			),
+		})
+		defer teardown()
+
+		stream, err := client.ServerStream(ctx, sent)
+		is.NoError(err)
+		is.NotNil(stream)
+
+		exp := int32(1)
+		for {
+			recv, err := stream.Recv()
+			if err == io.EOF {
+				is.Equal(exp, sent.GetValue())
+				return
+			}
+			is.Equal(exp, recv.GetValue())
+			exp++
+		}
+	})
+
+	t.Run("Chained interceptor", func(t *testing.T) {
+		is := require.New(t)
+
+		sent := &testproto.Msg{Value: 10}
+
+		service := mocks.NewMockTestServiceServer(t)
+		service.EXPECT().ServerStream(mock.Anything, mock.Anything).
+			Run(
+				func(msg *testproto.Msg, stream testproto.TestService_ServerStreamServer) {
+					v := msg.GetValue()
+					assert.Equal(t, sent.GetValue(), v)
+					for i := 1; i < int(v); i++ {
+						stream.Send(&testproto.Msg{Value: int32(i)})
+					}
+				},
+			).
+			Return(nil)
+
+		order := make([]string, 0)
+		streamInterceptor1 := grpcMocks.NewMockStreamServerInterceptor(t)
+		streamInterceptor1.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Times(1).Run(
+			func(args mock.Arguments) {
+				order = append(order, "1")
+			},
+		)
+		streamInterceptor2 := grpcMocks.NewMockStreamServerInterceptor(t)
+		streamInterceptor2.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Times(1).Run(
+			func(args mock.Arguments) {
+				order = append(order, "2")
+			},
+		)
+
+		client, ctx, teardown := setupOpts(service, []goat.DialOption{}, []goat.ServerOption{
+			goat.ChainStreamInterceptor(
+				func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+					streamInterceptor1.MethodCalled("Execute", srv, ss)
+					return handler(srv, ss)
+				},
+				func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+					streamInterceptor2.MethodCalled("Execute", srv, ss)
+					return handler(srv, ss)
+				},
+			),
+		})
+		defer teardown()
+
+		stream, err := client.ServerStream(ctx, sent)
+		is.NoError(err)
+		is.NotNil(stream)
+
+		exp := int32(1)
+		for {
+			recv, err := stream.Recv()
+			if err == io.EOF {
+				is.Equal(exp, sent.GetValue())
+				break
+			}
+			is.Equal(exp, recv.GetValue())
+			exp++
+		}
+
+		is.Equal([]string{"1", "2"}, order)
 	})
 }
 
@@ -471,6 +644,8 @@ func TestUnaryInterceptor(t *testing.T) {
 	is.NotNil(reply)
 }
 
+// This shows grpcMiddleware.ChainUnaryClient which is an old way of doing this. The new
+// approach is in-line with grpc-go:ChainUnaryInterceptor.
 func TestChainUnaryInterceptor(t *testing.T) {
 	is := require.New(t)
 

@@ -1,14 +1,21 @@
 # yaml
 with-expecter: True
-all: true
+
 
 packages:
   github.com/avos-io/goat/types: 
     config:
       dir: "gen/mocks"
       outpkg: "mocks"
+      all: true
+  google.golang.org/grpc: 
+    config:
+      dir: "gen/grpc/mocks"
+      outpkg: "mocks"
+      include-regex: ".*Interceptor"
   github.com/avos-io/goat/gen/testproto:
     config:
       dir: "gen/testproto/mocks"
       outpkg: "mocks"
+      all: true
   
