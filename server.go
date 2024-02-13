@@ -213,24 +213,26 @@ func (h *handler) serve(clientCtx context.Context) error {
 		}
 
 		if rpc.GetHeader() == nil {
-			return fmt.Errorf("no header")
+			log.Warn().Msgf("Server: received RPC without a header: ignoring message")
+			continue
 		}
 
 		rawMethod := rpc.GetHeader().Method
 		service, method, err := parseRawMethod(rawMethod)
 		if err != nil {
-			return errors.Wrapf(err, "failed to parse %s", rawMethod)
+			log.Warn().Msgf("Server: received RPC without invalid header, failed to parse %s: ignoring message", rawMethod)
+			continue
 		}
 
 		if rpc.GetHeader().Destination != h.srv.id {
 			log.Warn().
-				Msgf("Server %s: invalid destination %s", h.srv.id, rpc.GetHeader().Destination)
+				Msgf("Server %s: invalid destination %s: ignoring message", h.srv.id, rpc.GetHeader().Destination)
 			continue
 		}
 
 		si, known := h.srv.services[service]
 		if !known {
-			log.Warn().Msgf("Server: unknown service, %s", service)
+			log.Warn().Msgf("Server: unknown service, %s: ignoring message", service)
 			continue
 		}
 		if md, ok := si.methods[method]; ok {
@@ -241,7 +243,7 @@ func (h *handler) serve(clientCtx context.Context) error {
 			h.processStreamingRpc(clientCtx, si, sd, rpc)
 			continue
 		}
-		log.Warn().Msgf("Server: unhandled method, %s %s", service, method)
+		log.Warn().Msgf("Server: unhandled method, %s %s: ignoring message", service, method)
 	}
 }
 
