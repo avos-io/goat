@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	TestService_Unary_FullMethodName        = "/grpcwebsockets.TestService/Unary"
-	TestService_BidiStream_FullMethodName   = "/grpcwebsockets.TestService/BidiStream"
-	TestService_ServerStream_FullMethodName = "/grpcwebsockets.TestService/ServerStream"
-	TestService_ClientStream_FullMethodName = "/grpcwebsockets.TestService/ClientStream"
+	TestService_Unary_FullMethodName                  = "/grpcwebsockets.TestService/Unary"
+	TestService_BidiStream_FullMethodName             = "/grpcwebsockets.TestService/BidiStream"
+	TestService_ServerStream_FullMethodName           = "/grpcwebsockets.TestService/ServerStream"
+	TestService_ServerStreamThatSleeps_FullMethodName = "/grpcwebsockets.TestService/ServerStreamThatSleeps"
+	TestService_ClientStream_FullMethodName           = "/grpcwebsockets.TestService/ClientStream"
 )
 
 // TestServiceClient is the client API for TestService service.
@@ -32,6 +33,7 @@ type TestServiceClient interface {
 	Unary(ctx context.Context, in *Msg, opts ...grpc.CallOption) (*Msg, error)
 	BidiStream(ctx context.Context, opts ...grpc.CallOption) (TestService_BidiStreamClient, error)
 	ServerStream(ctx context.Context, in *Msg, opts ...grpc.CallOption) (TestService_ServerStreamClient, error)
+	ServerStreamThatSleeps(ctx context.Context, in *Msg, opts ...grpc.CallOption) (TestService_ServerStreamThatSleepsClient, error)
 	ClientStream(ctx context.Context, opts ...grpc.CallOption) (TestService_ClientStreamClient, error)
 }
 
@@ -115,8 +117,40 @@ func (x *testServiceServerStreamClient) Recv() (*Msg, error) {
 	return m, nil
 }
 
+func (c *testServiceClient) ServerStreamThatSleeps(ctx context.Context, in *Msg, opts ...grpc.CallOption) (TestService_ServerStreamThatSleepsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &TestService_ServiceDesc.Streams[2], TestService_ServerStreamThatSleeps_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &testServiceServerStreamThatSleepsClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type TestService_ServerStreamThatSleepsClient interface {
+	Recv() (*Msg, error)
+	grpc.ClientStream
+}
+
+type testServiceServerStreamThatSleepsClient struct {
+	grpc.ClientStream
+}
+
+func (x *testServiceServerStreamThatSleepsClient) Recv() (*Msg, error) {
+	m := new(Msg)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *testServiceClient) ClientStream(ctx context.Context, opts ...grpc.CallOption) (TestService_ClientStreamClient, error) {
-	stream, err := c.cc.NewStream(ctx, &TestService_ServiceDesc.Streams[2], TestService_ClientStream_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &TestService_ServiceDesc.Streams[3], TestService_ClientStream_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +190,7 @@ type TestServiceServer interface {
 	Unary(context.Context, *Msg) (*Msg, error)
 	BidiStream(TestService_BidiStreamServer) error
 	ServerStream(*Msg, TestService_ServerStreamServer) error
+	ServerStreamThatSleeps(*Msg, TestService_ServerStreamThatSleepsServer) error
 	ClientStream(TestService_ClientStreamServer) error
 }
 
@@ -171,6 +206,9 @@ func (UnimplementedTestServiceServer) BidiStream(TestService_BidiStreamServer) e
 }
 func (UnimplementedTestServiceServer) ServerStream(*Msg, TestService_ServerStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method ServerStream not implemented")
+}
+func (UnimplementedTestServiceServer) ServerStreamThatSleeps(*Msg, TestService_ServerStreamThatSleepsServer) error {
+	return status.Errorf(codes.Unimplemented, "method ServerStreamThatSleeps not implemented")
 }
 func (UnimplementedTestServiceServer) ClientStream(TestService_ClientStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method ClientStream not implemented")
@@ -252,6 +290,27 @@ func (x *testServiceServerStreamServer) Send(m *Msg) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _TestService_ServerStreamThatSleeps_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(Msg)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(TestServiceServer).ServerStreamThatSleeps(m, &testServiceServerStreamThatSleepsServer{stream})
+}
+
+type TestService_ServerStreamThatSleepsServer interface {
+	Send(*Msg) error
+	grpc.ServerStream
+}
+
+type testServiceServerStreamThatSleepsServer struct {
+	grpc.ServerStream
+}
+
+func (x *testServiceServerStreamThatSleepsServer) Send(m *Msg) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 func _TestService_ClientStream_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(TestServiceServer).ClientStream(&testServiceClientStreamServer{stream})
 }
@@ -300,6 +359,11 @@ var TestService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ServerStream",
 			Handler:       _TestService_ServerStream_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ServerStreamThatSleeps",
+			Handler:       _TestService_ServerStreamThatSleeps_Handler,
 			ServerStreams: true,
 		},
 		{
