@@ -134,6 +134,11 @@ type unaryRpcArgs struct {
 	rpc  *goatorepo.Rpc
 }
 
+type streamHandler struct {
+	ch     chan *goatorepo.Rpc
+	cancel context.CancelFunc
+}
+
 // handler for a specific goat.RpcReadWriter
 type handler struct {
 	ctx    context.Context
@@ -145,7 +150,7 @@ type handler struct {
 	codec encoding.Codec
 
 	mu      sync.Mutex // protects streams
-	streams map[uint64]chan *goatorepo.Rpc
+	streams map[uint64]streamHandler
 
 	writeChan    chan *goatorepo.Rpc
 	unaryRpcChan chan unaryRpcArgs
@@ -160,7 +165,7 @@ func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
 		srv:          srv,
 		rw:           rw,
 		codec:        encoding.GetCodec(proto.Name),
-		streams:      map[uint64]chan *goatorepo.Rpc{},
+		streams:      map[uint64]streamHandler{},
 		writeChan:    make(chan *goatorepo.Rpc),
 		unaryRpcChan: make(chan unaryRpcArgs),
 	}
@@ -329,34 +334,28 @@ func (h *handler) processStreamingRpc(
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if ch, ok := h.streams[rpc.Id]; ok {
-		ch <- rpc
+	resetStream := rpc.GetReset_() != nil && rpc.GetReset_().Type == "RST_STREAM"
+
+	if handler, ok := h.streams[rpc.Id]; ok {
+		if resetStream {
+			handler.cancel()
+		} else {
+			handler.ch <- rpc
+		}
 		return nil
 	}
 
-	streamId := rpc.Id
-	ch := make(chan *goatorepo.Rpc, 1)
-	h.streams[streamId] = ch
-
-	go h.runStream(clientCtx, info, sd, rpc, streamId, ch)
-	return nil
-}
-
-func (h *handler) runStream(
-	clientCtx context.Context,
-	info *serviceInfo,
-	sd *grpc.StreamDesc,
-	rpc *goatorepo.Rpc,
-	streamId uint64,
-	rCh chan *goatorepo.Rpc,
-) error {
-	defer h.unregisterStream(streamId)
+	if resetStream {
+		// In this case we've got a reset for something that no longer exists, so can
+		// safely ignore it.
+		return nil
+	}
 
 	if rpc.GetBody() != nil {
 		// The first Rpc in a stream is used to tell the server to start the stream;
 		// it must have an empty body. If this isn't the case, it must be because
 		// we've missed the first Rpc in the stream.
-		log.Info().Msgf("did not expect body: calling RST stream %d", streamId)
+		log.Info().Msgf("did not expect body: calling RST stream %d", rpc.Id)
 		h.resetStream(rpc)
 		return nil
 	}
@@ -367,9 +366,36 @@ func (h *handler) runStream(
 		return nil
 	}
 
+	ctx, cancel, err := contextFromHeaders(clientCtx, rpc.GetHeader())
+	if err != nil {
+		log.Panic().Err(err).Msg("Server: failed to get context from headers")
+	}
+
+	streamId := rpc.Id
+
+	h.streams[streamId] = streamHandler{
+		ch:     make(chan *goatorepo.Rpc, 1),
+		cancel: cancel,
+	}
+
+	go h.runStream(clientCtx, info, sd, rpc, streamId, ctx, h.streams[streamId])
+	return nil
+}
+
+func (h *handler) runStream(
+	clientCtx context.Context,
+	info *serviceInfo,
+	sd *grpc.StreamDesc,
+	rpc *goatorepo.Rpc,
+	streamId uint64,
+	ctx context.Context,
+	handler streamHandler,
+) error {
+	defer h.unregisterStream(streamId)
+
 	r := func(ctx context.Context) (*goatorepo.Rpc, error) {
 		select {
-		case msg, ok := <-rCh:
+		case msg, ok := <-handler.ch:
 			if !ok {
 				return nil, fmt.Errorf("rCh closed")
 			}
@@ -383,11 +409,7 @@ func (h *handler) runStream(
 		return nil
 	})
 
-	ctx, cancel, err := contextFromHeaders(clientCtx, rpc.GetHeader())
-	if err != nil {
-		log.Panic().Err(err).Msg("Server: failed to get context from headers")
-	}
-	defer cancel()
+	defer handler.cancel()
 
 	si := &grpc.StreamServerInfo{
 		FullMethod:     fmt.Sprintf("/%s/%s", info.name, sd.StreamName),
@@ -431,8 +453,8 @@ func (h *handler) unregisterStream(id uint64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if ch, ok := h.streams[id]; ok {
-		close(ch)
+	if handler, ok := h.streams[id]; ok {
+		handler.cancel()
 	}
 
 	delete(h.streams, id)
@@ -448,9 +470,8 @@ func (h *handler) resetStream(rpc *goatorepo.Rpc) {
 			Source:      rpc.GetHeader().GetDestination(),
 			Destination: rpc.GetHeader().GetSource(),
 		},
-		Status: &goatorepo.ResponseStatus{
-			Code:    int32(codes.Aborted),
-			Message: "RST stream",
+		Reset_: &goatorepo.Reset{
+			Type: "RST_STREAM",
 		},
 		Trailer: &goatorepo.Trailer{},
 	}
@@ -469,21 +490,23 @@ func contextFromHeaders(
 	parent context.Context,
 	h *goatorepo.RequestHeader,
 ) (context.Context, context.CancelFunc, error) {
-	cancel := func() {}
 	md, err := internal.ToMetadata(h.Headers)
 	if err != nil {
-		return parent, cancel, err
+		ctx, cancel := context.WithCancel(parent)
+		return ctx, cancel, err
 	}
 	ctx := metadata.NewIncomingContext(parent, md)
 
 	for _, hdr := range h.Headers {
 		if strings.ToLower(hdr.Key) == "grpc-timeout" {
 			if timeout, ok := parseGrpcTimeout(hdr.Value); ok {
-				ctx, cancel = context.WithTimeout(ctx, timeout)
-				break
+				ctx, cancel := context.WithTimeout(ctx, timeout)
+				return ctx, cancel, nil
 			}
 		}
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
 	return ctx, cancel, nil
 }
 

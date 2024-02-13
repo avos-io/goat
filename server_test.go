@@ -248,11 +248,100 @@ func TestServerStream(t *testing.T) {
 			is.Equal(id, reply.GetId())
 			is.Equal(dst, reply.GetHeader().GetSource())
 			is.Equal(src, reply.GetHeader().GetDestination())
-			is.Equal(int32(codes.Aborted), reply.GetStatus().GetCode())
-			is.Equal("RST stream", reply.GetStatus().GetMessage())
+			is.Equal("RST_STREAM", reply.GetReset_().GetType())
 		case <-time.After(1 * time.Second):
 			t.Fatal("timeout")
 		}
+	})
+
+	t.Run("We handle a client abort of a server stream", func(t *testing.T) {
+		srv := NewServer("s0")
+		defer srv.Stop()
+
+		id := uint64(99)
+		method := testproto.TestService_ServiceDesc.ServiceName + "/ServerStream"
+		sent := testproto.Msg{Value: 1}
+
+		rpcDone := make(chan struct{}, 1)
+		serverDone := make(chan error, 1)
+
+		service := mocks.NewMockTestServiceServer(t)
+		service.EXPECT().ServerStream(mock.Anything, mock.Anything).
+			Run(
+				func(m *testproto.Msg, stream testproto.TestService_ServerStreamServer) {
+					assert.Equal(t, sent.Value, m.Value)
+					rpcDone <- <-stream.Context().Done()
+				},
+			).
+			Return(nil)
+
+		testproto.RegisterTestServiceServer(srv, service)
+
+		conn := testutil.NewTestConn()
+
+		go func() {
+			serverDone <- srv.Serve(context.Background(), conn)
+		}()
+
+		// Open stream
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
+				},
+			},
+			Err: nil,
+		}
+
+		// SendMsg
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
+
+		// CloseSend
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
+				},
+				Status: &goatorepo.ResponseStatus{
+					Code:    int32(codes.OK),
+					Message: codes.OK.String(),
+				},
+				Trailer: &goatorepo.Trailer{},
+			},
+			Err: nil,
+		}
+
+		// Reset
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
+				},
+				Reset_: &goatorepo.Reset{
+					Type: "RST_STREAM",
+				},
+			},
+		}
+
+		// Reset should mean the ServerStream completes
+		<-rpcDone
+
+		// Closing the ReadChan should mean the server completes
+		close(conn.ReadChan)
+		<-serverDone
+	})
+
+	t.Run("We handle extraneous messages on a channel", func(t *testing.T) {
+
 	})
 }
 
