@@ -81,12 +81,22 @@ func (testService) ClientStream(srv testproto.TestService_ClientStreamServer) er
 
 	return nil
 }
+
 func (testService) ServerStream(msg *testproto.Msg, srv testproto.TestService_ServerStreamServer) error {
 	for i := 0; i < int(msg.Value); i++ {
 		srv.Send(&testproto.Msg{Value: int32(i)})
 	}
 
 	srv.SetTrailer(metadata.New(map[string]string{"FOOO": "bar"}))
+
+	return nil
+}
+
+func (testService) ServerStreamThatSleeps(msg *testproto.Msg, srv testproto.TestService_ServerStreamThatSleepsServer) error {
+	select {
+	case <-time.After(time.Second * time.Duration(msg.GetValue())):
+	case <-srv.Context().Done():
+	}
 
 	return nil
 }

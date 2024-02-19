@@ -149,6 +149,49 @@ func (_c *MockTestServiceServer_ServerStream_Call) RunAndReturn(run func(*testpr
 	return _c
 }
 
+// ServerStreamThatSleeps provides a mock function with given fields: _a0, _a1
+func (_m *MockTestServiceServer) ServerStreamThatSleeps(_a0 *testproto.Msg, _a1 testproto.TestService_ServerStreamThatSleepsServer) error {
+	ret := _m.Called(_a0, _a1)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*testproto.Msg, testproto.TestService_ServerStreamThatSleepsServer) error); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockTestServiceServer_ServerStreamThatSleeps_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ServerStreamThatSleeps'
+type MockTestServiceServer_ServerStreamThatSleeps_Call struct {
+	*mock.Call
+}
+
+// ServerStreamThatSleeps is a helper method to define mock.On call
+//   - _a0 *testproto.Msg
+//   - _a1 testproto.TestService_ServerStreamThatSleepsServer
+func (_e *MockTestServiceServer_Expecter) ServerStreamThatSleeps(_a0 interface{}, _a1 interface{}) *MockTestServiceServer_ServerStreamThatSleeps_Call {
+	return &MockTestServiceServer_ServerStreamThatSleeps_Call{Call: _e.mock.On("ServerStreamThatSleeps", _a0, _a1)}
+}
+
+func (_c *MockTestServiceServer_ServerStreamThatSleeps_Call) Run(run func(_a0 *testproto.Msg, _a1 testproto.TestService_ServerStreamThatSleepsServer)) *MockTestServiceServer_ServerStreamThatSleeps_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*testproto.Msg), args[1].(testproto.TestService_ServerStreamThatSleepsServer))
+	})
+	return _c
+}
+
+func (_c *MockTestServiceServer_ServerStreamThatSleeps_Call) Return(_a0 error) *MockTestServiceServer_ServerStreamThatSleeps_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockTestServiceServer_ServerStreamThatSleeps_Call) RunAndReturn(run func(*testproto.Msg, testproto.TestService_ServerStreamThatSleepsServer) error) *MockTestServiceServer_ServerStreamThatSleeps_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Unary provides a mock function with given fields: _a0, _a1
 func (_m *MockTestServiceServer) Unary(_a0 context.Context, _a1 *testproto.Msg) (*testproto.Msg, error) {
 	ret := _m.Called(_a0, _a1)

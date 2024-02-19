@@ -3,6 +3,7 @@ package goat
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -248,11 +249,226 @@ func TestServerStream(t *testing.T) {
 			is.Equal(id, reply.GetId())
 			is.Equal(dst, reply.GetHeader().GetSource())
 			is.Equal(src, reply.GetHeader().GetDestination())
-			is.Equal(int32(codes.Aborted), reply.GetStatus().GetCode())
-			is.Equal("RST stream", reply.GetStatus().GetMessage())
+			is.Equal("RST_STREAM", reply.GetReset_().GetType())
 		case <-time.After(1 * time.Second):
 			t.Fatal("timeout")
 		}
+	})
+
+	t.Run("We handle a client abort of a server stream", func(t *testing.T) {
+		srv := NewServer("s0")
+		defer srv.Stop()
+
+		id := uint64(99)
+		method := testproto.TestService_ServiceDesc.ServiceName + "/ServerStream"
+		sent := testproto.Msg{Value: 1}
+
+		rpcDone := make(chan struct{}, 1)
+		serverDone := make(chan error, 1)
+
+		service := mocks.NewMockTestServiceServer(t)
+		service.EXPECT().ServerStream(mock.Anything, mock.Anything).
+			Run(
+				func(m *testproto.Msg, stream testproto.TestService_ServerStreamServer) {
+					assert.Equal(t, sent.Value, m.Value)
+					rpcDone <- <-stream.Context().Done()
+				},
+			).
+			Return(nil)
+
+		testproto.RegisterTestServiceServer(srv, service)
+
+		conn := testutil.NewTestConn()
+
+		go func() {
+			serverDone <- srv.Serve(context.Background(), conn)
+		}()
+
+		// Open stream
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
+				},
+			},
+			Err: nil,
+		}
+
+		// SendMsg
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
+
+		// CloseSend
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
+				},
+				Status: &goatorepo.ResponseStatus{
+					Code:    int32(codes.OK),
+					Message: codes.OK.String(),
+				},
+				Trailer: &goatorepo.Trailer{},
+			},
+			Err: nil,
+		}
+
+		// Reset
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
+				},
+				Reset_: &goatorepo.Reset{
+					Type: "RST_STREAM",
+				},
+			},
+		}
+
+		// Reset should mean the ServerStream completes
+		<-rpcDone
+
+		conn.ReadChan <- testutil.ReadReturn{
+			Err: fmt.Errorf("read"),
+		}
+		<-serverDone
+	})
+
+	t.Run("We handle extraneous and erroneous messages on a channel", func(t *testing.T) {
+		srv := NewServer("s0")
+		defer srv.Stop()
+
+		id := uint64(99)
+		method := testproto.TestService_ServiceDesc.ServiceName + "/ServerStream"
+
+		serverDone := make(chan error, 1)
+
+		service := mocks.NewMockTestServiceServer(t)
+
+		testproto.RegisterTestServiceServer(srv, service)
+
+		conn := testutil.NewTestConn()
+
+		go func() {
+			serverDone <- srv.Serve(context.Background(), conn)
+		}()
+
+		go func() {
+			for {
+				<-conn.WriteChan
+			}
+		}()
+
+		// Send trailer for an ID that isn't open
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
+				},
+				Trailer: &goatorepo.Trailer{},
+			},
+			Err: nil,
+		}
+
+		id++
+
+		// Send a start streaming with a body - it's invalid, the initial message should have no body
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
+				},
+				Body: &goatorepo.Body{},
+			},
+			Err: nil,
+		}
+
+		id++
+
+		// Reset something that doesn't exist
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
+				},
+				Reset_: &goatorepo.Reset{
+					Type: "RST_STREAM",
+				},
+			},
+			Err: nil,
+		}
+
+		// Invalid destination
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      "c0",
+					Destination: "no such destination",
+				},
+			},
+			Err: nil,
+		}
+
+		// Unknown service
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      "no such service",
+					Source:      "c0",
+					Destination: "s0",
+				},
+			},
+			Err: nil,
+		}
+
+		// Unknown method
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      testproto.TestService_ServiceDesc.ServiceName + "/no such method",
+					Source:      "c0",
+					Destination: "s0",
+				},
+			},
+			Err: nil,
+		}
+
+		id++
+
+		// No header
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+			},
+			Err: nil,
+		}
+
+		// Close the Serve down
+		conn.ReadChan <- testutil.ReadReturn{
+			Err: fmt.Errorf("read"),
+		}
+		<-serverDone
 	})
 }
 

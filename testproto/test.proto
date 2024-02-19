@@ -1,15 +1,17 @@
 syntax = "proto3";
 
 package grpcwebsockets;
+
 option go_package = "./testproto";
 
 message Msg {
-    int32 value = 1;
+  int32 value = 1;
 }
 
 service TestService {
-    rpc Unary(Msg) returns (Msg) {}
-    rpc BidiStream(stream Msg) returns (stream Msg) {}
-    rpc ServerStream(Msg) returns (stream Msg) {}
-    rpc ClientStream(stream Msg) returns (Msg) {}
+  rpc Unary(Msg) returns (Msg) {}
+  rpc BidiStream(stream Msg) returns (stream Msg) {}
+  rpc ServerStream(Msg) returns (stream Msg) {}
+  rpc ServerStreamThatSleeps(Msg) returns (stream Msg) {}
+  rpc ClientStream(stream Msg) returns (Msg) {}
 }
