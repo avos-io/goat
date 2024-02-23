@@ -13,6 +13,11 @@ packages:
       dir: "gen/grpc/mocks"
       outpkg: "mocks"
       include-regex: ".*Interceptor"
+  google.golang.org/grpc/stats: 
+    config:
+      dir: "gen/grpc/stats/mocks"
+      outpkg: "mocks"
+      include-regex: ".*Handler"
   github.com/avos-io/goat/gen/testproto:
     config:
       dir: "gen/testproto/mocks"

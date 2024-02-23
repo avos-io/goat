@@ -28,13 +28,13 @@ func (g *goatOverPipe) Read(ctx context.Context) (*goatorepo.Rpc, error) {
 	var msgSize uint32
 	err := binary.Read(g.conn, binary.BigEndian, &msgSize)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	data := make([]byte, msgSize)
 	_, err = io.ReadFull(g.conn, data)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	var rpc goatorepo.Rpc
@@ -58,12 +58,12 @@ func (g *goatOverPipe) Write(ctx context.Context, pkt *goatorepo.Rpc) error {
 	var msgSize uint32 = uint32(len(data))
 	err = binary.Write(g.conn, binary.BigEndian, &msgSize)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	_, err = g.conn.Write(data)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	return nil

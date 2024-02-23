@@ -175,6 +175,8 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 		ss.protected.headersSent = true
 	}
 
+	// TODO: stats.OutPayload
+
 	err = ss.rw.Write(ss.ctx, &rpc)
 	if err != nil {
 		log.Error().Err(err).Msg("ServerStream SendMsg: conn.Write")
@@ -197,6 +199,8 @@ func (ss *serverStream) RecvMsg(m interface{}) error {
 	if err != nil {
 		return errors.Wrap(err, "RecvMsg Read")
 	}
+
+	// TODO: stats.InPayload
 
 	if rpc.GetTrailer() != nil {
 		st := rpc.GetStatus()
@@ -266,6 +270,8 @@ func (ss *serverStream) SendTrailer(trErr error) error {
 		tr.Status.Message = sp.GetMessage()
 		tr.Status.Details = sp.GetDetails()
 	}
+
+	// TODO: Stats.OutTrailer
 
 	err := ss.rw.Write(ss.ctx, &tr)
 	if err != nil {

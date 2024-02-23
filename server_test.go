@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"testing"
 	"time"
 
@@ -13,6 +14,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
+	"google.golang.org/grpc/stats"
+
+	grpcStatsMocks "github.com/avos-io/goat/gen/grpc/stats/mocks"
 
 	"github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/gen/testproto"
@@ -469,6 +473,72 @@ func TestServerStream(t *testing.T) {
 			Err: fmt.Errorf("read"),
 		}
 		<-serverDone
+	})
+}
+
+func expectStatsHandleConn[StatsType stats.ConnStats](m *grpcStatsMocks.MockHandler) *grpcStatsMocks.MockHandler_HandleConn_Call {
+	return m.EXPECT().HandleConn(mock.Anything, mock.MatchedBy(func(in stats.ConnStats) bool {
+		_, ok := in.(StatsType)
+		return ok
+	}))
+}
+
+func expectStatsHandleRPC[StatsType stats.RPCStats](m *grpcStatsMocks.MockHandler) *grpcStatsMocks.MockHandler_HandleRPC_Call {
+	return m.EXPECT().HandleRPC(mock.Anything, mock.MatchedBy(func(in stats.RPCStats) bool {
+		_, ok := in.(StatsType)
+		return ok
+	}))
+}
+
+func TestStatsHandler(t *testing.T) {
+	t.Run("Unary", func(t *testing.T) {
+		is := require.New(t)
+
+		statsMock := grpcStatsMocks.NewMockHandler(t)
+
+		expectStatsHandleConn[*stats.ConnBegin](statsMock).Times(1)
+		expectStatsHandleConn[*stats.ConnEnd](statsMock).Times(1)
+
+		expectStatsHandleRPC[*stats.Begin](statsMock).Times(1)
+		expectStatsHandleRPC[*stats.InHeader](statsMock).Times(1)
+		expectStatsHandleRPC[*stats.InPayload](statsMock).Times(1)
+		expectStatsHandleRPC[*stats.End](statsMock).Times(1)
+		expectStatsHandleRPC[*stats.OutHeader](statsMock).Times(1)
+		expectStatsHandleRPC[*stats.OutPayload](statsMock).Times(1)
+		expectStatsHandleRPC[*stats.OutTrailer](statsMock).Times(1)
+
+		statsMock.EXPECT().TagRPC(mock.Anything, mock.Anything).Maybe().Return(context.Background(), nil)
+		statsMock.EXPECT().TagConn(mock.Anything, mock.Anything).Maybe().Return(context.Background(), nil)
+
+		srv := NewServer("s0", StatsHandler(statsMock))
+		defer srv.Stop()
+
+		exp := testproto.Msg{Value: 43}
+
+		service := mocks.NewMockTestServiceServer(t)
+		service.EXPECT().Unary(mock.Anything, mock.Anything).Return(&exp, nil)
+
+		testproto.RegisterTestServiceServer(srv, service)
+
+		ps1, ps2 := net.Pipe()
+		done := make(chan struct{})
+
+		go func() {
+			srv.Serve(context.Background(), testutil.NewGoatOverPipe(ps1))
+			done <- struct{}{}
+		}()
+
+		clientConn := NewClientConn(testutil.NewGoatOverPipe(ps2), "c0", "s0")
+		cl := testproto.NewTestServiceClient(clientConn)
+
+		result, err := cl.Unary(context.Background(), &testproto.Msg{Value: 1})
+		is.NoError(err)
+		is.Equal(exp.GetValue(), result.GetValue())
+
+		ps1.Close()
+		ps2.Close()
+
+		<-done
 	})
 }
 
