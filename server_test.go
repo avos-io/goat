@@ -507,8 +507,22 @@ func TestStatsHandler(t *testing.T) {
 		expectStatsHandleRPC[*stats.OutPayload](statsMock).Times(1)
 		expectStatsHandleRPC[*stats.OutTrailer](statsMock).Times(1)
 
-		statsMock.EXPECT().TagRPC(mock.Anything, mock.Anything).Maybe().Return(context.Background(), nil)
-		statsMock.EXPECT().TagConn(mock.Anything, mock.Anything).Maybe().Return(context.Background(), nil)
+		type ctxValues int
+		const (
+			ctxValueTagRPC ctxValues = iota
+			ctxValueTagConn
+		)
+
+		tagRPCCall := statsMock.EXPECT().TagRPC(mock.Anything, mock.Anything)
+		tagRPCCall.Run(func(ctx context.Context, tag *stats.RPCTagInfo) {
+			ctx2 := context.WithValue(ctx, ctxValueTagRPC, "TagRPC")
+			tagRPCCall.Return(ctx2)
+		}).Times(1)
+		tagConnCall := statsMock.EXPECT().TagConn(mock.Anything, mock.Anything)
+		tagConnCall.Run(func(ctx context.Context, _a1 *stats.ConnTagInfo) {
+			ctx2 := context.WithValue(ctx, ctxValueTagConn, "TagConn")
+			tagConnCall.Return(ctx2)
+		}).Times(1)
 
 		srv := NewServer("s0", StatsHandler(statsMock))
 		defer srv.Stop()
@@ -516,7 +530,11 @@ func TestStatsHandler(t *testing.T) {
 		exp := testproto.Msg{Value: 43}
 
 		service := mocks.NewMockTestServiceServer(t)
-		service.EXPECT().Unary(mock.Anything, mock.Anything).Return(&exp, nil)
+		service.EXPECT().Unary(mock.Anything, mock.Anything).
+			Run(func(ctx context.Context, msg *testproto.Msg) {
+				is.Equal("TagRPC", ctx.Value(ctxValueTagRPC))
+				is.Equal("TagConn", ctx.Value(ctxValueTagConn))
+			}).Times(1).Return(&exp, nil)
 
 		testproto.RegisterTestServiceServer(srv, service)
 

@@ -186,12 +186,12 @@ func (h *handler) serve(clientCtx context.Context) error {
 	ctx := h.ctx
 
 	for _, sh := range h.srv.statsHandlers {
-		ctx = sh.TagConn(ctx, &stats.ConnTagInfo{})
-		sh.HandleConn(ctx, &stats.ConnBegin{})
+		clientCtx = sh.TagConn(clientCtx, &stats.ConnTagInfo{})
+		sh.HandleConn(clientCtx, &stats.ConnBegin{})
 	}
 	defer func() {
 		for _, sh := range h.srv.statsHandlers {
-			sh.HandleConn(ctx, &stats.ConnEnd{})
+			sh.HandleConn(clientCtx, &stats.ConnEnd{})
 		}
 	}()
 
