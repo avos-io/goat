@@ -362,9 +362,7 @@ func (h *handler) processUnaryRpc(
 				RecvTime: time.Now(),
 				Payload:  msg,
 				Length:   len(body.GetData()),
-				//WireLength:       payInfo.compressedLength + headerLen,
-				//CompressedLength: payInfo.compressedLength,
-				Data: body.GetData(),
+				Data:     body.GetData(),
 			})
 		}
 		return nil

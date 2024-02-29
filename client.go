@@ -85,6 +85,7 @@ func (cc *ClientConn) invoke(
 
 		beginTime := time.Now()
 		statsBegin = &stats.Begin{
+			Client:         true,
 			BeginTime:      beginTime,
 			IsClientStream: false,
 			IsServerStream: false,
@@ -94,6 +95,7 @@ func (cc *ClientConn) invoke(
 	defer func() {
 		for _, sh := range cc.statsHandlers {
 			end := &stats.End{
+				Client:    true,
 				BeginTime: statsBegin.BeginTime,
 				EndTime:   time.Now(),
 			}
@@ -116,10 +118,12 @@ func (cc *ClientConn) invoke(
 		mdHeaders, _ := internal.ToMetadata(headers)
 
 		sh.HandleRPC(ctx, &stats.OutHeader{
+			Client:     true,
 			FullMethod: method,
 			Header:     mdHeaders,
 		})
 		sh.HandleRPC(ctx, &stats.OutPayload{
+			Client:   true,
 			Payload:  args,
 			Data:     body,
 			Length:   len(body),
@@ -209,6 +213,32 @@ func (cc *ClientConn) newStream(
 		return nil, err
 	}
 
+	beginTime := time.Now()
+	for _, sh := range cc.statsHandlers {
+		ctx = sh.TagRPC(ctx, &stats.RPCTagInfo{
+			FullMethodName: method,
+		})
+		sh.HandleRPC(ctx, &stats.Begin{
+			Client:         true,
+			BeginTime:      beginTime,
+			IsClientStream: desc.ClientStreams,
+			IsServerStream: desc.ServerStreams,
+		})
+	}
+	defer func() {
+		if err != nil {
+			now := time.Now()
+			for _, sh := range cc.statsHandlers {
+				sh.HandleRPC(ctx, &stats.End{
+					Client:    true,
+					BeginTime: beginTime,
+					EndTime:   now,
+					Error:     err,
+				})
+			}
+		}
+	}()
+
 	// open stream
 	rpc := goatorepo.Rpc{
 		Id: id,
@@ -225,6 +255,15 @@ func (cc *ClientConn) newStream(
 		return nil, err
 	}
 
+	for _, sh := range cc.statsHandlers {
+		md, _ := internal.ToMetadata(rpc.Header.Headers)
+		sh.HandleRPC(ctx, &stats.OutHeader{
+			Client:     true,
+			FullMethod: method,
+			Header:     md,
+		})
+	}
+
 	return client.NewStream(
 		ctx,
 		id,
@@ -233,6 +272,8 @@ func (cc *ClientConn) newStream(
 		teardown,
 		cc.sourceAddress,
 		cc.destAddress,
+		cc.statsHandlers,
+		beginTime,
 	), nil
 }
 
