@@ -519,7 +519,12 @@ func (h *handler) runStream(
 		}
 	}
 	rw := internal.NewFnReadWriter(r, func(ctx context.Context, r *goatorepo.Rpc) error {
-		h.writeChan <- r
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case h.writeChan <- r:
+			break
+		}
 		return nil
 	})
 
