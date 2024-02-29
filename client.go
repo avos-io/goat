@@ -3,6 +3,7 @@ package goat
 import (
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -14,6 +15,7 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/stats"
 )
 
 type ClientConn struct {
@@ -25,6 +27,8 @@ type ClientConn struct {
 	streamInterceptor grpc.StreamClientInterceptor
 
 	sourceAddress, destAddress string
+
+	statsHandlers []stats.Handler
 }
 
 var _ grpc.ClientConnInterface = (*ClientConn)(nil)
@@ -72,6 +76,34 @@ func (cc *ClientConn) invoke(
 		log.Panic().Msg("Invoke opts unsupported")
 	}
 
+	var err error
+	var statsBegin *stats.Begin
+	for _, sh := range cc.statsHandlers {
+		ctx = sh.TagRPC(ctx, &stats.RPCTagInfo{
+			FullMethodName: method,
+		})
+
+		beginTime := time.Now()
+		statsBegin = &stats.Begin{
+			BeginTime:      beginTime,
+			IsClientStream: false,
+			IsServerStream: false,
+		}
+		sh.HandleRPC(ctx, statsBegin)
+	}
+	defer func() {
+		for _, sh := range cc.statsHandlers {
+			end := &stats.End{
+				BeginTime: statsBegin.BeginTime,
+				EndTime:   time.Now(),
+			}
+			if err != nil && err != io.EOF {
+				end.Error = err
+			}
+			sh.HandleRPC(ctx, end)
+		}
+	}()
+
 	headers := headersFromContext(ctx)
 
 	body, err := cc.codec.Marshal(args)
@@ -80,7 +112,28 @@ func (cc *ClientConn) invoke(
 		return err
 	}
 
-	replyBody, err := cc.mp.CallUnaryMethod(ctx,
+	for _, sh := range cc.statsHandlers {
+		mdHeaders, _ := internal.ToMetadata(headers)
+
+		sh.HandleRPC(ctx, &stats.OutHeader{
+			FullMethod: method,
+			Header:     mdHeaders,
+		})
+		sh.HandleRPC(ctx, &stats.OutPayload{
+			Payload:  args,
+			Data:     body,
+			Length:   len(body),
+			SentTime: time.Now(),
+		})
+		// Unary trailers? Do we support that?
+		//sh.HandleRPC(ctx, &stats.OutTrailer{
+		//	Trailer: sts.GetTrailers(),
+		//})
+	}
+
+	var replyBody *goatorepo.Body
+	replyBody, err = cc.mp.CallUnaryMethod(
+		ctx,
 		&goatorepo.RequestHeader{
 			Method:      method,
 			Headers:     headers,
@@ -90,6 +143,7 @@ func (cc *ClientConn) invoke(
 		&goatorepo.Body{
 			Data: body,
 		},
+		cc.statsHandlers,
 	)
 
 	if err != nil {
@@ -101,6 +155,17 @@ func (cc *ClientConn) invoke(
 	if err != nil {
 		log.Error().Err(err).Msg("Invoke Unmarshal")
 	}
+
+	for _, sh := range cc.statsHandlers {
+		sh.HandleRPC(ctx, &stats.InPayload{
+			Client:   true,
+			Payload:  reply,
+			Data:     replyBody.GetData(),
+			Length:   len(replyBody.GetData()),
+			RecvTime: time.Now(),
+		})
+	}
+
 	return err
 }
 

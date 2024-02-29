@@ -1,6 +1,9 @@
 package goat
 
-import "google.golang.org/grpc"
+import (
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/stats"
+)
 
 // DialOption is an option used when constructing a NewClientConn.
 type DialOption interface {
@@ -37,5 +40,11 @@ func WithUnaryInterceptor(i grpc.UnaryClientInterceptor) DialOption {
 func WithStreamInterceptor(i grpc.StreamClientInterceptor) DialOption {
 	return dialOptFunc(func(cc *ClientConn) {
 		cc.streamInterceptor = i
+	})
+}
+
+func WithStatsHandler(handler stats.Handler) DialOption {
+	return dialOptFunc(func(cc *ClientConn) {
+		cc.statsHandlers = append(cc.statsHandlers, handler)
 	})
 }

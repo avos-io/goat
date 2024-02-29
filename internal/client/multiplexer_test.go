@@ -84,7 +84,8 @@ func TestUnaryMethodSuccess(t *testing.T) {
 		&goatorepo.RequestHeader{
 			Method: "sam",
 		},
-		&goatorepo.Body{})
+		&goatorepo.Body{},
+		nil)
 
 	assert.NoError(t, err)
 
@@ -123,7 +124,8 @@ func TestUnaryMethodFailure(t *testing.T) {
 		&goatorepo.RequestHeader{
 			Method: "sam",
 		},
-		&goatorepo.Body{})
+		&goatorepo.Body{},
+		nil)
 
 	assert.Nil(t, valBytes)
 	assert.Error(t, err)
@@ -161,6 +163,7 @@ func TestUnaryMethodFailureDespiteBody(t *testing.T) {
 			Method: "yes",
 		},
 		&goatorepo.Body{},
+		nil,
 	)
 
 	is := require.New(t)
@@ -195,6 +198,7 @@ func TestUnaryMethodFailureChannelClosed(t *testing.T) {
 			Method: "test",
 		},
 		&goatorepo.Body{},
+		nil,
 	)
 
 	is := require.New(t)
