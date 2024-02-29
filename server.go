@@ -134,7 +134,9 @@ func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 
 func (s *Server) Serve(ctx context.Context, rw RpcReadWriter) error {
 	h := newHandler(s.ctx, s, rw)
-	return h.serve(ctx)
+	err := h.serve(ctx)
+	h.cancelAndWaitForStreams()
+	return err
 }
 
 type unaryRpcArgs struct {
@@ -145,6 +147,7 @@ type unaryRpcArgs struct {
 
 type streamHandler struct {
 	ch     chan *goatorepo.Rpc
+	done   chan struct{}
 	cancel context.CancelFunc
 }
 
@@ -266,6 +269,25 @@ func (h *handler) serve(clientCtx context.Context) error {
 		}
 		log.Warn().Msgf("Server: unhandled method, %s %s: ignoring message", service, method)
 	}
+}
+
+func (h *handler) cancelAndWaitForStreams() {
+	h.mu.Lock()
+	for len(h.streams) > 0 {
+		// Just get the first streamHandler we find in the map and wait on it - order
+		// doesn't matter here, we just want to grab one.
+		var sh streamHandler
+		for _, sh = range h.streams {
+			break
+		}
+		h.mu.Unlock()
+
+		sh.cancel()
+		<-sh.done
+
+		h.mu.Lock()
+	}
+	h.mu.Unlock()
 }
 
 func (h *handler) processUnaryRpc(
@@ -467,15 +489,15 @@ func (h *handler) processStreamingRpc(
 
 	h.streams[streamId] = streamHandler{
 		ch:     make(chan *goatorepo.Rpc, 1),
+		done:   make(chan struct{}, 1),
 		cancel: cancel,
 	}
 
-	go h.runStream(clientCtx, info, sd, rpc, streamId, ctx, h.streams[streamId])
+	go h.runStream(info, sd, rpc, streamId, ctx, h.streams[streamId])
 	return nil
 }
 
 func (h *handler) runStream(
-	clientCtx context.Context,
 	info *serviceInfo,
 	sd *grpc.StreamDesc,
 	rpc *goatorepo.Rpc,
@@ -555,6 +577,7 @@ func (h *handler) runStream(
 		rpc.Header.Destination,
 		rpc.Header.Source,
 		rw,
+		h.srv.statsHandlers,
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Server: newServerStream failed")
@@ -585,6 +608,7 @@ func (h *handler) unregisterStream(id uint64) {
 
 	if handler, ok := h.streams[id]; ok {
 		handler.cancel()
+		handler.done <- struct{}{}
 	}
 
 	delete(h.streams, id)

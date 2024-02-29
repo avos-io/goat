@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -14,6 +15,7 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 
 	goatorepo "github.com/avos-io/goat/gen/goatorepo"
@@ -31,7 +33,8 @@ type serverStream struct {
 
 	codec encoding.Codec
 
-	rw types.RpcReadWriter
+	rw            types.RpcReadWriter
+	statsHandlers []stats.Handler
 
 	protected struct {
 		sync.Mutex
@@ -52,15 +55,17 @@ func NewServerStream(
 	src string,
 	dst string,
 	rw types.RpcReadWriter,
+	statsHandlers []stats.Handler,
 ) (*serverStream, error) {
 	return &serverStream{
-		ctx:    ctx,
-		id:     id,
-		method: method,
-		src:    src,
-		dst:    dst,
-		codec:  encoding.GetCodec(proto.Name),
-		rw:     rw,
+		ctx:           ctx,
+		id:            id,
+		method:        method,
+		src:           src,
+		dst:           dst,
+		codec:         encoding.GetCodec(proto.Name),
+		rw:            rw,
+		statsHandlers: statsHandlers,
 	}, nil
 }
 
@@ -93,6 +98,13 @@ func (ss *serverStream) setHeader(md metadata.MD, send bool) error {
 
 	if !send {
 		return nil
+	}
+
+	for _, sh := range ss.statsHandlers {
+		sh.HandleRPC(ss.ctx, &stats.OutHeader{
+			FullMethod: ss.method,
+			Header:     metadata.Join(ss.protected.headers...),
+		})
 	}
 
 	rpc := goatorepo.Rpc{
@@ -173,9 +185,23 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 	if !ss.protected.headersSent {
 		rpc.Header.Headers = internal.ToKeyValue(ss.protected.headers...)
 		ss.protected.headersSent = true
+
+		for _, sh := range ss.statsHandlers {
+			sh.HandleRPC(ss.ctx, &stats.OutHeader{
+				FullMethod: ss.method,
+				Header:     metadata.Join(ss.protected.headers...),
+			})
+		}
 	}
 
-	// TODO: stats.OutPayload
+	for _, sh := range ss.statsHandlers {
+		sh.HandleRPC(ss.ctx, &stats.OutPayload{
+			Payload:  m,
+			Data:     body,
+			Length:   len(body),
+			SentTime: time.Now(),
+		})
+	}
 
 	err = ss.rw.Write(ss.ctx, &rpc)
 	if err != nil {
@@ -200,8 +226,6 @@ func (ss *serverStream) RecvMsg(m interface{}) error {
 		return errors.Wrap(err, "RecvMsg Read")
 	}
 
-	// TODO: stats.InPayload
-
 	if rpc.GetTrailer() != nil {
 		st := rpc.GetStatus()
 		if st.GetCode() == int32(codes.OK) {
@@ -216,7 +240,20 @@ func (ss *serverStream) RecvMsg(m interface{}) error {
 		return errors.Wrap(err, "RecvMsg")
 	}
 
-	return ss.codec.Unmarshal(rpc.GetBody().GetData(), m)
+	err = ss.codec.Unmarshal(rpc.GetBody().GetData(), m)
+
+	if err == nil {
+		for _, sh := range ss.statsHandlers {
+			sh.HandleRPC(ss.ctx, &stats.InPayload{
+				RecvTime: time.Now(),
+				Payload:  m,
+				Length:   len(rpc.GetBody().GetData()),
+				Data:     rpc.GetBody().Data,
+			})
+		}
+	}
+
+	return err
 }
 
 // SetContext sets the context for the stream. It is not safe to call SetContext
@@ -271,7 +308,11 @@ func (ss *serverStream) SendTrailer(trErr error) error {
 		tr.Status.Details = sp.GetDetails()
 	}
 
-	// TODO: Stats.OutTrailer
+	for _, sh := range ss.statsHandlers {
+		sh.HandleRPC(ss.ctx, &stats.OutTrailer{
+			Trailer: metadata.Join(ss.protected.trailers...),
+		})
+	}
 
 	err := ss.rw.Write(ss.ctx, &tr)
 	if err != nil {
