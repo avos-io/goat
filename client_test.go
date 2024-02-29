@@ -31,9 +31,6 @@ func TestClientStatsHandler(t *testing.T) {
 		expectStatsHandleRPC[*stats.OutHeader](statsMock).Times(1)
 		expectStatsHandleRPC[*stats.OutPayload](statsMock).Times(1)
 
-		// Unary doesn't send a trailer (yet?)
-		// expectStatsHandleRPC[*stats.OutTrailer](statsMock).Times(1)
-
 		tagRPCCall := statsMock.EXPECT().TagRPC(mock.Anything, mock.Anything)
 		tagRPCCall.Run(func(ctx context.Context, tag *stats.RPCTagInfo) {
 			ctx2 := metadata.AppendToOutgoingContext(ctx, "from-tag-rpc", "test 1")
@@ -93,7 +90,6 @@ func TestClientStatsHandler(t *testing.T) {
 		expectStatsHandleRPC[*stats.End](statsMock).Times(1)
 		expectStatsHandleRPC[*stats.OutHeader](statsMock).Times(1)
 		expectStatsHandleRPC[*stats.OutPayload](statsMock).Times(1)
-		//expectStatsHandleRPC[*stats.OutTrailer](statsMock).Times(1)
 
 		tagRPCCall := statsMock.EXPECT().TagRPC(mock.Anything, mock.Anything)
 		tagRPCCall.Run(func(ctx context.Context, tag *stats.RPCTagInfo) {
