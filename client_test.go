@@ -21,7 +21,6 @@ func TestClientStatsHandler(t *testing.T) {
 
 		statsMock := grpcStatsMocks.NewMockHandler(t)
 
-		// TODO: conn stuff
 		expectStatsHandleConn[*stats.ConnBegin](statsMock).Times(1)
 		expectStatsHandleConn[*stats.ConnEnd](statsMock).Times(1)
 
@@ -35,22 +34,12 @@ func TestClientStatsHandler(t *testing.T) {
 		// Unary doesn't send a trailer (yet?)
 		// expectStatsHandleRPC[*stats.OutTrailer](statsMock).Times(1)
 
-		type ctxValues int
-		const (
-			ctxValueTagRPC ctxValues = iota
-			ctxValueTagConn
-		)
-
 		tagRPCCall := statsMock.EXPECT().TagRPC(mock.Anything, mock.Anything)
 		tagRPCCall.Run(func(ctx context.Context, tag *stats.RPCTagInfo) {
 			ctx2 := metadata.AppendToOutgoingContext(ctx, "from-tag-rpc", "test 1")
 			tagRPCCall.Return(ctx2)
 		}).Times(1)
-		tagConnCall := statsMock.EXPECT().TagConn(mock.Anything, mock.Anything)
-		tagConnCall.Run(func(ctx context.Context, _a1 *stats.ConnTagInfo) {
-			ctx2 := context.WithValue(ctx, ctxValueTagConn, "TagConn")
-			tagConnCall.Return(ctx2)
-		}).Times(1)
+		statsMock.EXPECT().TagConn(mock.Anything, mock.Anything).Times(1).Return(context.Background())
 
 		srv := NewServer("s0")
 		defer srv.Stop()
@@ -63,8 +52,6 @@ func TestClientStatsHandler(t *testing.T) {
 				md, ok := metadata.FromIncomingContext(ctx)
 				is.True(ok)
 				is.Equal("test 1", md.Get("from-tag-rpc")[0])
-				// FIXME:
-				//is.Equal("TagConn", ctx.Value(ctxValueTagConn))
 			}).Times(1).Return(&exp, nil)
 
 		testproto.RegisterTestServiceServer(srv, service)
@@ -83,6 +70,8 @@ func TestClientStatsHandler(t *testing.T) {
 		result, err := cl.Unary(context.Background(), &testproto.Msg{Value: 1})
 		is.NoError(err)
 		is.Equal(exp.GetValue(), result.GetValue())
+
+		clientConn.Close()
 
 		ps1.Close()
 		ps2.Close()

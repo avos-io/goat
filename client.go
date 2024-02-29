@@ -45,7 +45,22 @@ func NewClientConn(conn RpcReadWriter, source, dest string, opts ...DialOption) 
 		opt.apply(&cc)
 	}
 
+	for _, sh := range cc.statsHandlers {
+		sh.TagConn(context.Background(), &stats.ConnTagInfo{})
+		sh.HandleConn(context.Background(), &stats.ConnBegin{
+			Client: true,
+		})
+	}
+
 	return &cc
+}
+
+func (cc *ClientConn) Close() {
+	for _, sh := range cc.statsHandlers {
+		sh.HandleConn(context.Background(), &stats.ConnEnd{
+			Client: true,
+		})
+	}
 }
 
 // Invoke performs a unary RPC and returns after the response is received
