@@ -338,7 +338,7 @@ func (h *handler) processUnaryRpc(
 				EndTime:   time.Now(),
 			}
 			if appErr != nil && appErr != io.EOF {
-				end.Error = appErr //toRPCErr(err)
+				end.Error = appErr
 			}
 			sh.HandleRPC(ctx, end)
 		}
@@ -567,7 +567,7 @@ func (h *handler) runStream(
 				EndTime:   time.Now(),
 			}
 			if appErr != nil && appErr != io.EOF {
-				end.Error = appErr //toRPCErr(err)
+				end.Error = appErr
 			}
 			sh.HandleRPC(ctx, end)
 		}
