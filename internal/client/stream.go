@@ -187,7 +187,6 @@ func (cs *clientStream) SendMsg(m interface{}) error {
 	}
 	rpc := goatorepo.Rpc{
 		Id: cs.id,
-		// FIXME: don't need header here - try removing
 		Header: &goatorepo.RequestHeader{
 			Method:      cs.method,
 			Source:      cs.sourceAddress,
