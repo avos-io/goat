@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
+	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 
 	goatorepo "github.com/avos-io/goat/gen/goatorepo"
@@ -72,6 +73,7 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 	ctx context.Context,
 	header *goatorepo.RequestHeader,
 	body *goatorepo.Body,
+	statsHandlers []stats.Handler,
 ) (*goatorepo.Body, error) {
 
 	if err := rm.readErrorIfDone(); err != nil {
@@ -101,6 +103,15 @@ func (rm *RpcMultiplexer) CallUnaryMethod(
 	case resp, ok := <-respChan:
 		if !ok {
 			return nil, fmt.Errorf("respChan closed")
+		}
+		for _, sh := range statsHandlers {
+			headers, _ := internal.ToMetadata(resp.GetHeader().Headers)
+
+			sh.HandleRPC(ctx, &stats.InHeader{
+				Client:     true,
+				FullMethod: header.Method,
+				Header:     headers,
+			})
 		}
 		if resp.Status != nil {
 			return nil, status.FromProto(&spb.Status{

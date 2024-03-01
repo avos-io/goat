@@ -381,7 +381,7 @@ func TestBidiStream(t *testing.T) {
 				func(stream testproto.TestService_BidiStreamServer) {
 					for {
 						msg, err := stream.Recv()
-						if err == io.EOF || err == context.Canceled {
+						if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
 							return
 						}
 						is.NoError(err)
@@ -974,9 +974,11 @@ func setupOpts(
 
 	server := goat.NewServer("server0", serverOpts...)
 	testproto.RegisterTestServiceServer(server, s)
+	done := make(chan struct{}, 1)
 
 	go func() {
-		server.Serve(context.Background(), serverConn)
+		server.Serve(ctx, serverConn)
+		done <- struct{}{}
 	}()
 
 	client := testproto.NewTestServiceClient(
@@ -986,6 +988,7 @@ func setupOpts(
 	teardown := func() {
 		cancel()
 		server.Stop()
+		<-done
 	}
 	return client, ctx, teardown
 }

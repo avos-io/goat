@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 
 	"github.com/avos-io/goat/gen/goatorepo"
@@ -48,6 +49,12 @@ func UnaryInterceptor(i grpc.UnaryServerInterceptor) ServerOption {
 func StreamInterceptor(i grpc.StreamServerInterceptor) ServerOption {
 	return serverOptFunc(func(s *Server) {
 		s.streamInterceptor = i
+	})
+}
+
+func StatsHandler(h stats.Handler) ServerOption {
+	return serverOptFunc(func(s *Server) {
+		s.statsHandlers = append(s.statsHandlers, h)
 	})
 }
 
@@ -85,6 +92,7 @@ type Server struct {
 
 	unaryInterceptor  grpc.UnaryServerInterceptor
 	streamInterceptor grpc.StreamServerInterceptor
+	statsHandlers     []stats.Handler
 }
 
 func (s *Server) Stop() {
@@ -125,7 +133,9 @@ func (s *Server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
 
 func (s *Server) Serve(ctx context.Context, rw RpcReadWriter) error {
 	h := newHandler(s.ctx, s, rw)
-	return h.serve(ctx)
+	err := h.serve(ctx)
+	h.cancelAndWaitForStreams()
+	return err
 }
 
 type unaryRpcArgs struct {
@@ -136,6 +146,7 @@ type unaryRpcArgs struct {
 
 type streamHandler struct {
 	ch     chan *goatorepo.Rpc
+	done   chan struct{}
 	cancel context.CancelFunc
 }
 
@@ -174,7 +185,19 @@ func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
 func (h *handler) serve(clientCtx context.Context) error {
 	defer h.cancel()
 
-	writeCtx, cancel := context.WithCancel(h.ctx)
+	ctx := h.ctx
+
+	for _, sh := range h.srv.statsHandlers {
+		clientCtx = sh.TagConn(clientCtx, &stats.ConnTagInfo{})
+		sh.HandleConn(clientCtx, &stats.ConnBegin{})
+	}
+	defer func() {
+		for _, sh := range h.srv.statsHandlers {
+			sh.HandleConn(clientCtx, &stats.ConnEnd{})
+		}
+	}()
+
+	writeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	go func() {
@@ -188,7 +211,7 @@ func (h *handler) serve(clientCtx context.Context) error {
 		}
 	}()
 
-	unaryRpcCtx, unaryRpcCtxCancel := context.WithCancel(h.ctx)
+	unaryRpcCtx, unaryRpcCtxCancel := context.WithCancel(ctx)
 	defer unaryRpcCtxCancel()
 
 	const numRpcWorkers = 8
@@ -207,7 +230,7 @@ func (h *handler) serve(clientCtx context.Context) error {
 	}
 
 	for {
-		rpc, err := h.rw.Read(h.ctx)
+		rpc, err := h.rw.Read(ctx)
 		if err != nil {
 			return errors.Wrap(err, "read error")
 		}
@@ -247,6 +270,25 @@ func (h *handler) serve(clientCtx context.Context) error {
 	}
 }
 
+func (h *handler) cancelAndWaitForStreams() {
+	h.mu.Lock()
+	for len(h.streams) > 0 {
+		// Just get the first streamHandler we find in the map and wait on it - order
+		// doesn't matter here, we just want to grab one.
+		var sh streamHandler
+		for _, sh = range h.streams {
+			break
+		}
+		h.mu.Unlock()
+
+		sh.cancel()
+		<-sh.done
+
+		h.mu.Lock()
+	}
+	h.mu.Unlock()
+}
+
 func (h *handler) processUnaryRpc(
 	clientCtx context.Context,
 	info *serviceInfo,
@@ -259,7 +301,15 @@ func (h *handler) processUnaryRpc(
 	}
 	defer cancel()
 
+	var appErr error
 	fullMethod := fmt.Sprintf("/%s/%s", info.name, md.MethodName)
+
+	beginTime := time.Now()
+	ctx = internal.StatsStartServerRPC(h.srv.statsHandlers, false, beginTime, fullMethod, false, false, ctx)
+	defer func() {
+		internal.StatsEndRPC(h.srv.statsHandlers, false, beginTime, appErr, ctx)
+	}()
+
 	sts := server.NewUnaryServerTransportStream(fullMethod)
 	ctx = grpc.NewContextWithServerTransportStream(ctx, sts)
 
@@ -273,10 +323,19 @@ func (h *handler) processUnaryRpc(
 		if err := h.codec.Unmarshal(body.GetData(), msg); err != nil {
 			return status.Error(codes.InvalidArgument, err.Error())
 		}
+		for _, sh := range h.srv.statsHandlers {
+			sh.HandleRPC(ctx, &stats.InPayload{
+				RecvTime: time.Now(),
+				Payload:  msg,
+				Length:   len(body.GetData()),
+				Data:     body.GetData(),
+			})
+		}
 		return nil
 	}
 
-	resp, appErr := md.Handler(info.serviceImpl, ctx, dec, h.srv.unaryInterceptor)
+	var resp any
+	resp, appErr = md.Handler(info.serviceImpl, ctx, dec, h.srv.unaryInterceptor)
 
 	respH := internal.ToKeyValue(sts.GetHeaders())
 	respHeader := &goatorepo.RequestHeader{
@@ -307,15 +366,32 @@ func (h *handler) processUnaryRpc(
 	}
 
 	var respBody *goatorepo.Body
+	var data []byte
 
 	if resp != nil {
-		data, err := h.codec.Marshal(resp)
+		data, err = h.codec.Marshal(resp)
 
 		if err == nil {
 			respBody = &goatorepo.Body{
 				Data: data,
 			}
 		}
+	}
+
+	for _, sh := range h.srv.statsHandlers {
+		sh.HandleRPC(ctx, &stats.OutHeader{
+			FullMethod: fullMethod,
+			Header:     sts.GetHeaders(),
+		})
+		sh.HandleRPC(ctx, &stats.OutPayload{
+			Payload:  resp,
+			Data:     data,
+			Length:   len(data),
+			SentTime: time.Now(),
+		})
+		sh.HandleRPC(ctx, &stats.OutTrailer{
+			Trailer: sts.GetTrailers(),
+		})
 	}
 
 	return &goatorepo.Rpc{
@@ -377,15 +453,15 @@ func (h *handler) processStreamingRpc(
 
 	h.streams[streamId] = streamHandler{
 		ch:     make(chan *goatorepo.Rpc, 1),
+		done:   make(chan struct{}, 1),
 		cancel: cancel,
 	}
 
-	go h.runStream(clientCtx, info, sd, rpc, streamId, ctx, h.streams[streamId])
+	go h.runStream(info, sd, rpc, streamId, ctx, h.streams[streamId])
 	return nil
 }
 
 func (h *handler) runStream(
-	clientCtx context.Context,
 	info *serviceInfo,
 	sd *grpc.StreamDesc,
 	rpc *goatorepo.Rpc,
@@ -407,17 +483,29 @@ func (h *handler) runStream(
 		}
 	}
 	rw := internal.NewFnReadWriter(r, func(ctx context.Context, r *goatorepo.Rpc) error {
-		h.writeChan <- r
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case h.writeChan <- r:
+			break
+		}
 		return nil
 	})
 
 	defer handler.cancel()
 
+	var appErr error
 	si := &grpc.StreamServerInfo{
 		FullMethod:     fmt.Sprintf("/%s/%s", info.name, sd.StreamName),
 		IsClientStream: sd.ClientStreams,
 		IsServerStream: sd.ServerStreams,
 	}
+
+	beginTime := time.Now()
+	ctx = internal.StatsStartServerRPC(h.srv.statsHandlers, false, beginTime, si.FullMethod, si.IsClientStream, si.IsServerStream, ctx)
+	defer func() {
+		internal.StatsEndRPC(h.srv.statsHandlers, false, beginTime, appErr, ctx)
+	}()
 
 	stream, err := server.NewServerStream(
 		ctx,
@@ -426,6 +514,7 @@ func (h *handler) runStream(
 		rpc.Header.Destination,
 		rpc.Header.Source,
 		rw,
+		h.srv.statsHandlers,
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Server: newServerStream failed")
@@ -435,7 +524,6 @@ func (h *handler) runStream(
 	sts := server.NewServerTransportStream(si.FullMethod, stream)
 	stream.SetContext(grpc.NewContextWithServerTransportStream(ctx, sts))
 
-	var appErr error
 	if h.srv.streamInterceptor != nil {
 		appErr = h.srv.streamInterceptor(info.serviceImpl, stream, si, sd.Handler)
 	} else {
@@ -457,6 +545,7 @@ func (h *handler) unregisterStream(id uint64) {
 
 	if handler, ok := h.streams[id]; ok {
 		handler.cancel()
+		handler.done <- struct{}{}
 	}
 
 	delete(h.streams, id)

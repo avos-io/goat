@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
@@ -13,6 +14,7 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 
 	goatorepo "github.com/avos-io/goat/gen/goatorepo"
@@ -33,6 +35,9 @@ type clientStream struct {
 	header metadata.MD
 
 	rw types.RpcReadWriter
+
+	statsHandlers []stats.Handler
+	beginTime     time.Time
 
 	protected struct {
 		sync.Mutex
@@ -58,6 +63,8 @@ func NewStream(
 	rw types.RpcReadWriter,
 	teardown func(),
 	sourceAddress, destAddress string,
+	statsHandlers []stats.Handler,
+	beginTime time.Time,
 ) grpc.ClientStream {
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -77,6 +84,8 @@ func NewStream(
 		rCh:           make(chan *goatorepo.Body),
 		sourceAddress: sourceAddress,
 		destAddress:   destAddress,
+		statsHandlers: statsHandlers,
+		beginTime:     beginTime,
 	}
 
 	cs.ready.Add(1)
@@ -132,6 +141,14 @@ func (cs *clientStream) CloseSend() error {
 		Trailer: &goatorepo.Trailer{},
 	}
 
+	for _, sh := range cs.statsHandlers {
+		md, _ := internal.ToMetadata(tr.GetTrailer().GetMetadata())
+		sh.HandleRPC(cs.ctx, &stats.OutTrailer{
+			Client:  true,
+			Trailer: md,
+		})
+	}
+
 	return cs.rw.Write(cs.ctx, &tr)
 }
 
@@ -185,6 +202,16 @@ func (cs *clientStream) SendMsg(m interface{}) error {
 		return err
 	}
 
+	for _, sh := range cs.statsHandlers {
+		sh.HandleRPC(cs.ctx, &stats.OutPayload{
+			Client:   true,
+			Payload:  m,
+			Data:     body,
+			Length:   len(body),
+			SentTime: time.Now(),
+		})
+	}
+
 	return nil
 }
 
@@ -212,7 +239,19 @@ func (cs *clientStream) RecvMsg(m interface{}) error {
 			}
 			return err
 		}
-		return cs.codec.Unmarshal(body.GetData(), m)
+		err := cs.codec.Unmarshal(body.GetData(), m)
+		if err != nil {
+			return err
+		}
+		for _, sh := range cs.statsHandlers {
+			sh.HandleRPC(cs.ctx, &stats.InPayload{
+				RecvTime: time.Now(),
+				Payload:  m,
+				Length:   len(body.GetData()),
+				Data:     body.GetData(),
+			})
+		}
+		return nil
 	}
 }
 
@@ -239,6 +278,18 @@ func (cs *clientStream) readLoop() error {
 		cs.protected.rErr = rErr
 		cs.protected.trailer = trailer
 
+		now := time.Now()
+		for _, sh := range cs.statsHandlers {
+			end := &stats.End{
+				BeginTime: cs.beginTime,
+				EndTime:   now,
+			}
+			if rErr != nil && rErr != io.EOF {
+				end.Error = rErr
+			}
+			sh.HandleRPC(cs.ctx, end)
+		}
+
 		log.Info().Uint64("id", cs.id).Msg("ClientStream done")
 	}()
 
@@ -250,6 +301,16 @@ func (cs *clientStream) readLoop() error {
 			cs.protected.headerErr = err
 			cs.header = headers
 			cs.ready.Done()
+
+			if err == nil {
+				for _, sh := range cs.statsHandlers {
+					sh.HandleRPC(cs.ctx, &stats.InHeader{
+						Client:     true,
+						FullMethod: cs.method,
+						Header:     headers,
+					})
+				}
+			}
 		}
 	}
 

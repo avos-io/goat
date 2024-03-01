@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/stats"
 )
 
 type ClientConn struct {
@@ -25,6 +26,8 @@ type ClientConn struct {
 	streamInterceptor grpc.StreamClientInterceptor
 
 	sourceAddress, destAddress string
+
+	statsHandlers []stats.Handler
 }
 
 var _ grpc.ClientConnInterface = (*ClientConn)(nil)
@@ -41,7 +44,22 @@ func NewClientConn(conn RpcReadWriter, source, dest string, opts ...DialOption) 
 		opt.apply(&cc)
 	}
 
+	for _, sh := range cc.statsHandlers {
+		sh.TagConn(context.Background(), &stats.ConnTagInfo{})
+		sh.HandleConn(context.Background(), &stats.ConnBegin{
+			Client: true,
+		})
+	}
+
 	return &cc
+}
+
+func (cc *ClientConn) Close() {
+	for _, sh := range cc.statsHandlers {
+		sh.HandleConn(context.Background(), &stats.ConnEnd{
+			Client: true,
+		})
+	}
 }
 
 // Invoke performs a unary RPC and returns after the response is received
@@ -72,6 +90,14 @@ func (cc *ClientConn) invoke(
 		log.Panic().Msg("Invoke opts unsupported")
 	}
 
+	var err error
+
+	beginTime := time.Now()
+	ctx = internal.StatsStartServerRPC(cc.statsHandlers, true, beginTime, method, false, false, ctx)
+	defer func() {
+		internal.StatsEndRPC(cc.statsHandlers, true, beginTime, err, ctx)
+	}()
+
 	headers := headersFromContext(ctx)
 
 	body, err := cc.codec.Marshal(args)
@@ -80,7 +106,26 @@ func (cc *ClientConn) invoke(
 		return err
 	}
 
-	replyBody, err := cc.mp.CallUnaryMethod(ctx,
+	for _, sh := range cc.statsHandlers {
+		mdHeaders, _ := internal.ToMetadata(headers)
+
+		sh.HandleRPC(ctx, &stats.OutHeader{
+			Client:     true,
+			FullMethod: method,
+			Header:     mdHeaders,
+		})
+		sh.HandleRPC(ctx, &stats.OutPayload{
+			Client:   true,
+			Payload:  args,
+			Data:     body,
+			Length:   len(body),
+			SentTime: time.Now(),
+		})
+	}
+
+	var replyBody *goatorepo.Body
+	replyBody, err = cc.mp.CallUnaryMethod(
+		ctx,
 		&goatorepo.RequestHeader{
 			Method:      method,
 			Headers:     headers,
@@ -90,6 +135,7 @@ func (cc *ClientConn) invoke(
 		&goatorepo.Body{
 			Data: body,
 		},
+		cc.statsHandlers,
 	)
 
 	if err != nil {
@@ -101,6 +147,17 @@ func (cc *ClientConn) invoke(
 	if err != nil {
 		log.Error().Err(err).Msg("Invoke Unmarshal")
 	}
+
+	for _, sh := range cc.statsHandlers {
+		sh.HandleRPC(ctx, &stats.InPayload{
+			Client:   true,
+			Payload:  reply,
+			Data:     replyBody.GetData(),
+			Length:   len(replyBody.GetData()),
+			RecvTime: time.Now(),
+		})
+	}
+
 	return err
 }
 
@@ -144,6 +201,32 @@ func (cc *ClientConn) newStream(
 		return nil, err
 	}
 
+	beginTime := time.Now()
+	for _, sh := range cc.statsHandlers {
+		ctx = sh.TagRPC(ctx, &stats.RPCTagInfo{
+			FullMethodName: method,
+		})
+		sh.HandleRPC(ctx, &stats.Begin{
+			Client:         true,
+			BeginTime:      beginTime,
+			IsClientStream: desc.ClientStreams,
+			IsServerStream: desc.ServerStreams,
+		})
+	}
+	defer func() {
+		if err != nil {
+			now := time.Now()
+			for _, sh := range cc.statsHandlers {
+				sh.HandleRPC(ctx, &stats.End{
+					Client:    true,
+					BeginTime: beginTime,
+					EndTime:   now,
+					Error:     err,
+				})
+			}
+		}
+	}()
+
 	// open stream
 	rpc := goatorepo.Rpc{
 		Id: id,
@@ -160,6 +243,15 @@ func (cc *ClientConn) newStream(
 		return nil, err
 	}
 
+	for _, sh := range cc.statsHandlers {
+		md, _ := internal.ToMetadata(rpc.Header.Headers)
+		sh.HandleRPC(ctx, &stats.OutHeader{
+			Client:     true,
+			FullMethod: method,
+			Header:     md,
+		})
+	}
+
 	return client.NewStream(
 		ctx,
 		id,
@@ -168,6 +260,8 @@ func (cc *ClientConn) newStream(
 		teardown,
 		cc.sourceAddress,
 		cc.destAddress,
+		cc.statsHandlers,
+		beginTime,
 	), nil
 }
 

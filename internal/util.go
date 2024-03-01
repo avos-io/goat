@@ -3,9 +3,13 @@ package internal
 import (
 	"context"
 	"encoding/base64"
+	"errors"
+	"io"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/stats"
 
 	goatorepo "github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/types"
@@ -64,4 +68,72 @@ func (frw *fnReadWriter) Read(ctx context.Context) (*goatorepo.Rpc, error) {
 
 func (frw *fnReadWriter) Write(ctx context.Context, rpc *goatorepo.Rpc) error {
 	return frw.w(ctx, rpc)
+}
+
+func StatsStartServerRPC(
+	statsHandlers []stats.Handler,
+	isClient bool,
+	beginTime time.Time,
+	method string,
+	isClientStream bool,
+	isServerStream bool,
+	ctx context.Context,
+) context.Context {
+	if len(statsHandlers) == 0 {
+		return ctx
+	}
+
+	incomingMetadata, imOk := metadata.FromIncomingContext(ctx)
+	if !imOk {
+		incomingMetadata = metadata.MD{}
+	}
+
+	for _, sh := range statsHandlers {
+		ctx = sh.TagRPC(ctx, &stats.RPCTagInfo{
+			FullMethodName: method,
+		})
+		statsBegin := &stats.Begin{
+			Client:         isClient,
+			BeginTime:      beginTime,
+			IsClientStream: isClientStream,
+			IsServerStream: isServerStream,
+		}
+		sh.HandleRPC(ctx, statsBegin)
+
+		if !isClient {
+			sh.HandleRPC(ctx, &stats.InHeader{
+				Client:     isClient,
+				FullMethod: method,
+				// Note regular GRPC fills in more fields like so. We don't have this information
+				// given the way GOAT works (the underlying transport is abstracted away), so we
+				// leave it all as zero.
+				//RemoteAddr:  t.Peer().Addr,
+				//LocalAddr:   t.Peer().LocalAddr,
+				//Compression: stream.RecvCompress(),
+				//WireLength:  stream.HeaderWireLength(),
+				Header: incomingMetadata,
+			})
+		}
+	}
+	return ctx
+}
+
+func StatsEndRPC(
+	statsHandlers []stats.Handler,
+	isClient bool,
+	beginTime time.Time,
+	appErr error,
+	ctx context.Context,
+) {
+	for _, sh := range statsHandlers {
+		end := &stats.End{
+			Client:    isClient,
+			BeginTime: beginTime,
+			EndTime:   time.Now(),
+		}
+		if appErr != nil && !errors.Is(appErr, io.EOF) {
+			end.Error = appErr
+		}
+		sh.HandleRPC(ctx, end)
+	}
 }
