@@ -144,10 +144,6 @@ func (cc *ClientConn) invoke(
 			Length:   len(body),
 			SentTime: time.Now(),
 		})
-		// Unary trailers? Do we support that?
-		//sh.HandleRPC(ctx, &stats.OutTrailer{
-		//	Trailer: sts.GetTrailers(),
-		//})
 	}
 
 	var replyBody *goatorepo.Body
