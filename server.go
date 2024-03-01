@@ -3,7 +3,6 @@ package goat
 import (
 	"context"
 	"fmt"
-	"io"
 	"reflect"
 	"strconv"
 	"strings"
@@ -305,43 +304,10 @@ func (h *handler) processUnaryRpc(
 	var appErr error
 	fullMethod := fmt.Sprintf("/%s/%s", info.name, md.MethodName)
 
-	var statsBegin *stats.Begin
-	incomingMetadata, imOk := metadata.FromIncomingContext(ctx)
-	if !imOk {
-		incomingMetadata = metadata.MD{}
-	}
-	for _, sh := range h.srv.statsHandlers {
-		ctx = sh.TagRPC(ctx, &stats.RPCTagInfo{
-			FullMethodName: fullMethod,
-		})
-
-		beginTime := time.Now()
-		statsBegin = &stats.Begin{
-			BeginTime:      beginTime,
-			IsClientStream: false,
-			IsServerStream: false,
-		}
-		sh.HandleRPC(ctx, statsBegin)
-		sh.HandleRPC(ctx, &stats.InHeader{
-			FullMethod: fullMethod,
-			//RemoteAddr:  t.Peer().Addr,
-			//LocalAddr:   t.Peer().LocalAddr,
-			//Compression: stream.RecvCompress(),
-			//WireLength:  stream.HeaderWireLength(),
-			Header: incomingMetadata,
-		})
-	}
+	beginTime := time.Now()
+	ctx = internal.StatsStartServerRPC(h.srv.statsHandlers, false, beginTime, fullMethod, false, false, ctx)
 	defer func() {
-		for _, sh := range h.srv.statsHandlers {
-			end := &stats.End{
-				BeginTime: statsBegin.BeginTime,
-				EndTime:   time.Now(),
-			}
-			if appErr != nil && appErr != io.EOF {
-				end.Error = appErr
-			}
-			sh.HandleRPC(ctx, end)
-		}
+		internal.StatsEndRPC(h.srv.statsHandlers, false, beginTime, appErr, ctx)
 	}()
 
 	sts := server.NewUnaryServerTransportStream(fullMethod)
@@ -535,42 +501,10 @@ func (h *handler) runStream(
 		IsServerStream: sd.ServerStreams,
 	}
 
-	var statsBegin *stats.Begin
-	incomingMetadata, imOk := metadata.FromIncomingContext(ctx)
-	if !imOk {
-		incomingMetadata = metadata.MD{}
-	}
-	for _, sh := range h.srv.statsHandlers {
-		ctx = sh.TagRPC(ctx, &stats.RPCTagInfo{
-			FullMethodName: si.FullMethod,
-		})
-		beginTime := time.Now()
-		statsBegin = &stats.Begin{
-			BeginTime:      beginTime,
-			IsClientStream: si.IsClientStream,
-			IsServerStream: si.IsServerStream,
-		}
-		sh.HandleRPC(ctx, statsBegin)
-		sh.HandleRPC(ctx, &stats.InHeader{
-			FullMethod: si.FullMethod,
-			//RemoteAddr:  t.Peer().Addr,
-			//LocalAddr:   t.Peer().LocalAddr,
-			//Compression: stream.RecvCompress(),
-			//WireLength:  stream.HeaderWireLength(),
-			Header: incomingMetadata,
-		})
-	}
+	beginTime := time.Now()
+	ctx = internal.StatsStartServerRPC(h.srv.statsHandlers, false, beginTime, si.FullMethod, si.IsClientStream, si.IsServerStream, ctx)
 	defer func() {
-		for _, sh := range h.srv.statsHandlers {
-			end := &stats.End{
-				BeginTime: statsBegin.BeginTime,
-				EndTime:   time.Now(),
-			}
-			if appErr != nil && appErr != io.EOF {
-				end.Error = appErr
-			}
-			sh.HandleRPC(ctx, end)
-		}
+		internal.StatsEndRPC(h.srv.statsHandlers, false, beginTime, appErr, ctx)
 	}()
 
 	stream, err := server.NewServerStream(

@@ -3,7 +3,6 @@ package goat
 import (
 	"context"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -92,33 +91,11 @@ func (cc *ClientConn) invoke(
 	}
 
 	var err error
-	var statsBegin *stats.Begin
-	for _, sh := range cc.statsHandlers {
-		ctx = sh.TagRPC(ctx, &stats.RPCTagInfo{
-			FullMethodName: method,
-		})
 
-		beginTime := time.Now()
-		statsBegin = &stats.Begin{
-			Client:         true,
-			BeginTime:      beginTime,
-			IsClientStream: false,
-			IsServerStream: false,
-		}
-		sh.HandleRPC(ctx, statsBegin)
-	}
+	beginTime := time.Now()
+	ctx = internal.StatsStartServerRPC(cc.statsHandlers, true, beginTime, method, false, false, ctx)
 	defer func() {
-		for _, sh := range cc.statsHandlers {
-			end := &stats.End{
-				Client:    true,
-				BeginTime: statsBegin.BeginTime,
-				EndTime:   time.Now(),
-			}
-			if err != nil && err != io.EOF {
-				end.Error = err
-			}
-			sh.HandleRPC(ctx, end)
-		}
+		internal.StatsEndRPC(cc.statsHandlers, true, beginTime, err, ctx)
 	}()
 
 	headers := headersFromContext(ctx)
