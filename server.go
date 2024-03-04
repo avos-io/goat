@@ -446,7 +446,9 @@ func (h *handler) processStreamingRpc(
 
 	ctx, cancel, err := contextFromHeaders(clientCtx, rpc.GetHeader())
 	if err != nil {
-		log.Panic().Err(err).Msg("Server: failed to get context from headers")
+		log.Info().Msgf("invalid headers: calling RST stream %d", rpc.Id)
+		h.resetStream(rpc)
+		return nil
 	}
 
 	streamId := rpc.Id
@@ -532,7 +534,6 @@ func (h *handler) runStream(
 
 	err = stream.SendTrailer(appErr)
 	if err != nil {
-		log.Error().Err(err).Msg("Server: SendTrailer")
 		return err
 	}
 

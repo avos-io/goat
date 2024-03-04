@@ -316,7 +316,6 @@ func (ss *serverStream) SendTrailer(trErr error) error {
 
 	err := ss.rw.Write(ss.ctx, &tr)
 	if err != nil {
-		log.Error().Err(err).Msg("ServerStream SendTrailer: conn.Write")
 		return err
 	}
 	return nil
