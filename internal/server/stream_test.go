@@ -13,8 +13,10 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/stats"
 
 	goatorepo "github.com/avos-io/goat/gen/goatorepo"
+	grpcStatsMocks "github.com/avos-io/goat/gen/grpc/stats/mocks"
 	"github.com/avos-io/goat/gen/mocks"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/internal"
@@ -401,6 +403,46 @@ func TestRecvMsg(t *testing.T) {
 		is.NoError(stream.RecvMsg(&got))
 
 		is.Equal(sent.GetValue(), got.GetValue())
+	})
+
+	t.Run("RecvMsg: nil RPC body with stats handler", func(t *testing.T) {
+		is := require.New(t)
+
+		ctx := context.Background()
+		streamId := uint64(9001)
+		method := "method"
+		source := "my_source"
+		destination := "my_dest"
+		rw := mocks.NewMockRpcReadWriter(t)
+		statsMock := grpcStatsMocks.NewMockHandler(t)
+		stream, err := NewServerStream(ctx, streamId, method, source, destination, rw, []stats.Handler{statsMock})
+		is.NoError(err)
+
+		codec := encoding.GetCodec(proto.Name)
+		sent := testproto.Msg{Value: 42}
+
+		_, err = codec.Marshal(&sent)
+		is.NoError(err)
+
+		rpc := goatorepo.Rpc{
+			Id: streamId,
+			Header: &goatorepo.RequestHeader{
+				Method:      method,
+				Source:      destination,
+				Destination: source,
+			},
+			Status: &goatorepo.ResponseStatus{
+				Code:    int32(codes.OK),
+				Message: codes.OK.String(),
+			},
+			Body: nil,
+		}
+
+		statsMock.EXPECT().HandleRPC(mock.Anything, mock.Anything).Times(1)
+		rw.EXPECT().Read(ctx).Return(&rpc, nil)
+
+		var got testproto.Msg
+		is.NoError(stream.RecvMsg(&got))
 	})
 
 	t.Run("RecvMsg error", func(t *testing.T) {

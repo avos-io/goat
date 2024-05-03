@@ -248,7 +248,7 @@ func (ss *serverStream) RecvMsg(m interface{}) error {
 				RecvTime: time.Now(),
 				Payload:  m,
 				Length:   len(rpc.GetBody().GetData()),
-				Data:     rpc.GetBody().Data,
+				Data:     rpc.GetBody().GetData(),
 			})
 		}
 	}
