@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/jonboulle/clockwork"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 )
@@ -34,7 +34,7 @@ type GoatOverHttp struct {
 
 	connectionCleanupInterval time.Duration
 	connectionTimeout         time.Duration
-	clock                     clock.Clock
+	clock                     clockwork.Clock
 
 	conns struct {
 		sync.Mutex
@@ -58,7 +58,7 @@ func NewGoatOverHttp(
 
 		connectionCleanupInterval: 1 * time.Minute,
 		connectionTimeout:         4 * time.Minute,
-		clock:                     clock.New(),
+		clock:                     clockwork.NewRealClock(),
 	}
 	goh.conns.value = make(map[string]*httpReadWriter)
 
@@ -82,7 +82,7 @@ func (fn goatOverHttpOptFunc) apply(goh *GoatOverHttp) {
 }
 
 // WithClock sets the clock of the GoatOverHttp.
-func WithClock(cl clock.Clock) GoatOverHttpOption {
+func WithClock(cl clockwork.Clock) GoatOverHttpOption {
 	return goatOverHttpOptFunc(func(goh *GoatOverHttp) {
 		goh.clock = cl
 	})
@@ -165,13 +165,13 @@ func (goh *GoatOverHttp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // connectionCleaner ticks every |connectionCleanupInterval|, closing any
 // connections whose last activity is older than |connectionTimeout|.
 func (goh *GoatOverHttp) connectionCleaner() {
-	ticker := goh.clock.Ticker(goh.connectionCleanupInterval)
+	ticker := goh.clock.NewTicker(goh.connectionCleanupInterval)
 	for {
 		select {
 		case <-goh.ctx.Done():
 			ticker.Stop()
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			now := goh.clock.Now().Unix()
 
 			goh.conns.Lock()
@@ -227,7 +227,7 @@ type httpReadWriter struct {
 	readCh    chan *Rpc
 	cancel    func()
 
-	clock        clock.Clock
+	clock        clockwork.Clock
 	lastActivity atomic.Int64
 }
 
