@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+	github.com/jonboulle/clockwork v0.4.0
 	github.com/rs/zerolog v1.28.0
 	github.com/stretchr/testify v1.4.0
 	golang.org/x/sync v0.3.0
@@ -16,7 +17,6 @@ require (
 require github.com/golang/protobuf v1.5.3 // indirect
 
 require (
-	github.com/benbjohnson/clock v1.3.0
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
