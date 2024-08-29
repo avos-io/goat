@@ -8,33 +8,63 @@ env:
   # GH API request on every invocation to check the versions available.
   # See: https://github.com/arduino/setup-task
   TASK_VERSION: 3.18.0
+  NODE_VERSION: 20.x
 
 jobs:
   main:
-
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-      with:
-        submodules: "true"
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          submodules: "true"
+          path: goat
 
-    - name: Update submodules
-      run: git submodule update --init --recursive
+      - name: Update submodules
+        working-directory: goat
+        run: git submodule update --init --recursive
 
-    - name: Setup Golang with cache
-      uses: magnetikonline/action-golang-cache@v3
-      with:
-        go-version: 1.19
+      - name: Setup Golang with cache
+        uses: magnetikonline/action-golang-cache@v3
+        with:
+          go-version: 1.19
 
-    - run: go version
+      - run: go version
 
-    - name: Install Task
-      uses: arduino/setup-task@v1
+      - name: Install Task
+        uses: arduino/setup-task@v1
 
-    - name: Setup project
-      run: scripts/bootstrap
+      - name: Setup project
+        working-directory: goat
+        run: scripts/bootstrap
 
-    - name: Test
-      run: task test
+      - name: Test
+        working-directory: goat
+        run: task test
+
+      - name: Checkout goat-es
+        uses: actions/checkout@v4
+        with:
+          repository: avos-io/goat-es
+          path: goat-es
+
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: goat-es/package-lock.json
+
+      - name: Install goat-es dependencies
+        working-directory: goat-es
+        run: npm ci
+
+      - name: Run integration tests
+        run: |
+          cd goat
+          go run cmd/e2e-websocket-test/main.go localhost:9043 &
+          while ! nc -z localhost 9043; do sleep 0.1; done
+          cd ../goat-es
+          E2E_TEST_ADDR=ws://localhost:9043/test npm run test:integration
+          kill %1
