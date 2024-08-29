@@ -87,8 +87,12 @@ func (cc *ClientConn) invoke(
 	reply interface{},
 	opts ...grpc.CallOption,
 ) error {
-	if len(opts) > 0 {
+	if len(opts) > 1 {
 		log.Panic().Msg("Invoke opts unsupported")
+	} else if len(opts) == 1 {
+		if _, ok := opts[0].(grpc.EmptyCallOption); !ok {
+			log.Panic().Msg("Invoke opts unsupported")
+		}
 	}
 
 	var err error
@@ -195,8 +199,12 @@ func (cc *ClientConn) newStream(
 	method string,
 	opts ...grpc.CallOption,
 ) (grpc.ClientStream, error) {
-	if len(opts) > 0 {
+	if len(opts) > 1 {
 		log.Panic().Msg("NewStream: opts unsupported")
+	} else if len(opts) == 1 {
+		if _, ok := opts[0].(grpc.EmptyCallOption); !ok {
+			log.Panic().Msg("NewStream: opts unsupported")
+		}
 	}
 
 	id, rw, teardown, err := cc.mp.NewStreamReadWriter(ctx)
