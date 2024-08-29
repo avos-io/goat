@@ -16,10 +16,10 @@ import (
 	"github.com/avos-io/goat/gen/mocks"
 	"github.com/avos-io/goat/gen/testproto"
 	"github.com/avos-io/goat/internal/testutil"
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"nhooyr.io/websocket"
 )
 
 type simulatedServer struct {

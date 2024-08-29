@@ -40,7 +40,7 @@ See [Client](#client) below on how to use a GOAT client. See [Server](#server) b
 ### Transports
 
 A _transport implementation_ is one implementing this interface; two example implementations exist in this repo:
-* A simple websocket-based tranport in `NewGoatOverWebsocket()`. This allows creating a new GOAT transport given a websocket connection from the [nhooyr.io/websocket](https://nhooyr.io/websocket) Golang module.
+* A simple websocket-based tranport in `NewGoatOverWebsocket()`. This allows creating a new GOAT transport given a websocket connection from the [github.com/coder/websocket](https://pkg.go.dev/github.com/coder/websocket) Golang module.
 * The unit testing code has several transport implementations, e.g. `NewGoatOverPipe()` which works over any `net.Conn` including those returned by [net.Pipe()](https://pkg.go.dev/net#Pipe).
 * An example transport over HTTP 1/1.1 in `NewGoatOverHttp()`. You probably don't want to use this, but it serves as another example of implementing a transport.
 
@@ -127,7 +127,7 @@ pb.RegisterRouteGuideServer(grpcServer, newServer())
 grpcServer.Serve(lis)
 ```
 
-Rather than `grpc.NewServer()` we use `goat.NewServer()`. 
+Rather than `grpc.NewServer()` we use `goat.NewServer()`.
 
 ```go
 // ...
@@ -146,7 +146,7 @@ This is an advanced feature and not yet documented. It is recommended to read th
 
 # Protocol
 
-GRPC is canonically [transported over HTTP/2](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md), making use of HTTP/2's ability to provide framing and stream management. 
+GRPC is canonically [transported over HTTP/2](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md), making use of HTTP/2's ability to provide framing and stream management.
 
 Three concepts from HTTP/2 are core to understanding GRPC's use there (we're glossing over detail like `CONTINUATION` frames and more; the following suffices):
 1. `HEADERS` frames

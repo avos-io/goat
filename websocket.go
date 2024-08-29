@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	"github.com/avos-io/goat/gen/goatorepo"
+	"github.com/coder/websocket"
 	"google.golang.org/protobuf/proto"
-	"nhooyr.io/websocket"
 )
 
 var errNonBinaryWebsocketMessage = errors.New("invalid websocket message: not binary")

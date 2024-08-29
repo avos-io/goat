@@ -13,9 +13,9 @@ import (
 
 	"github.com/avos-io/goat"
 	"github.com/avos-io/goat/gen/testproto"
+	"github.com/coder/websocket"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
-	"nhooyr.io/websocket"
 )
 
 type myClientIden string
