@@ -6,7 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/avos-io/goat/gen/testproto/mocks"
+	grpcMocks "github.com/avos-io/goat/gen/grpc/mocks"
+	"github.com/avos-io/goat/gen/testproto"
 )
 
 func TestUnaryTransportStream(t *testing.T) {
@@ -52,7 +53,8 @@ func TestUnaryTransportStream(t *testing.T) {
 
 func TestServerTransportStream(t *testing.T) {
 	t.Run("Method", func(t *testing.T) {
-		ts := NewServerTransportStream("foo", mocks.NewMockTestService_BidiStreamServer(t))
+		ts := NewServerTransportStream("foo",
+			grpcMocks.NewMockBidiStreamingServer[testproto.Msg, testproto.Msg](t))
 		require.Equal(t, "foo", ts.Method())
 	})
 
@@ -61,7 +63,7 @@ func TestServerTransportStream(t *testing.T) {
 
 		md := metadata.New(map[string]string{"foo": "1"})
 
-		m := mocks.NewMockTestService_BidiStreamServer(t)
+		m := grpcMocks.NewMockBidiStreamingServer[testproto.Msg, testproto.Msg](t)
 		ts := NewServerTransportStream("", m)
 
 		m.EXPECT().SetHeader(md).Return(nil).Once()

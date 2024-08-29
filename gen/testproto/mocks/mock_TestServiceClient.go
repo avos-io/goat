@@ -26,7 +26,7 @@ func (_m *MockTestServiceClient) EXPECT() *MockTestServiceClient_Expecter {
 }
 
 // BidiStream provides a mock function with given fields: ctx, opts
-func (_m *MockTestServiceClient) BidiStream(ctx context.Context, opts ...grpc.CallOption) (testproto.TestService_BidiStreamClient, error) {
+func (_m *MockTestServiceClient) BidiStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[testproto.Msg, testproto.Msg], error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -40,16 +40,16 @@ func (_m *MockTestServiceClient) BidiStream(ctx context.Context, opts ...grpc.Ca
 		panic("no return value specified for BidiStream")
 	}
 
-	var r0 testproto.TestService_BidiStreamClient
+	var r0 grpc.BidiStreamingClient[testproto.Msg, testproto.Msg]
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, ...grpc.CallOption) (testproto.TestService_BidiStreamClient, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, ...grpc.CallOption) (grpc.BidiStreamingClient[testproto.Msg, testproto.Msg], error)); ok {
 		return rf(ctx, opts...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, ...grpc.CallOption) testproto.TestService_BidiStreamClient); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, ...grpc.CallOption) grpc.BidiStreamingClient[testproto.Msg, testproto.Msg]); ok {
 		r0 = rf(ctx, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(testproto.TestService_BidiStreamClient)
+			r0 = ret.Get(0).(grpc.BidiStreamingClient[testproto.Msg, testproto.Msg])
 		}
 	}
 
@@ -88,18 +88,18 @@ func (_c *MockTestServiceClient_BidiStream_Call) Run(run func(ctx context.Contex
 	return _c
 }
 
-func (_c *MockTestServiceClient_BidiStream_Call) Return(_a0 testproto.TestService_BidiStreamClient, _a1 error) *MockTestServiceClient_BidiStream_Call {
+func (_c *MockTestServiceClient_BidiStream_Call) Return(_a0 grpc.BidiStreamingClient[testproto.Msg, testproto.Msg], _a1 error) *MockTestServiceClient_BidiStream_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockTestServiceClient_BidiStream_Call) RunAndReturn(run func(context.Context, ...grpc.CallOption) (testproto.TestService_BidiStreamClient, error)) *MockTestServiceClient_BidiStream_Call {
+func (_c *MockTestServiceClient_BidiStream_Call) RunAndReturn(run func(context.Context, ...grpc.CallOption) (grpc.BidiStreamingClient[testproto.Msg, testproto.Msg], error)) *MockTestServiceClient_BidiStream_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ClientStream provides a mock function with given fields: ctx, opts
-func (_m *MockTestServiceClient) ClientStream(ctx context.Context, opts ...grpc.CallOption) (testproto.TestService_ClientStreamClient, error) {
+func (_m *MockTestServiceClient) ClientStream(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[testproto.Msg, testproto.Msg], error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -113,16 +113,16 @@ func (_m *MockTestServiceClient) ClientStream(ctx context.Context, opts ...grpc.
 		panic("no return value specified for ClientStream")
 	}
 
-	var r0 testproto.TestService_ClientStreamClient
+	var r0 grpc.ClientStreamingClient[testproto.Msg, testproto.Msg]
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, ...grpc.CallOption) (testproto.TestService_ClientStreamClient, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, ...grpc.CallOption) (grpc.ClientStreamingClient[testproto.Msg, testproto.Msg], error)); ok {
 		return rf(ctx, opts...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, ...grpc.CallOption) testproto.TestService_ClientStreamClient); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, ...grpc.CallOption) grpc.ClientStreamingClient[testproto.Msg, testproto.Msg]); ok {
 		r0 = rf(ctx, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(testproto.TestService_ClientStreamClient)
+			r0 = ret.Get(0).(grpc.ClientStreamingClient[testproto.Msg, testproto.Msg])
 		}
 	}
 
@@ -161,18 +161,18 @@ func (_c *MockTestServiceClient_ClientStream_Call) Run(run func(ctx context.Cont
 	return _c
 }
 
-func (_c *MockTestServiceClient_ClientStream_Call) Return(_a0 testproto.TestService_ClientStreamClient, _a1 error) *MockTestServiceClient_ClientStream_Call {
+func (_c *MockTestServiceClient_ClientStream_Call) Return(_a0 grpc.ClientStreamingClient[testproto.Msg, testproto.Msg], _a1 error) *MockTestServiceClient_ClientStream_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockTestServiceClient_ClientStream_Call) RunAndReturn(run func(context.Context, ...grpc.CallOption) (testproto.TestService_ClientStreamClient, error)) *MockTestServiceClient_ClientStream_Call {
+func (_c *MockTestServiceClient_ClientStream_Call) RunAndReturn(run func(context.Context, ...grpc.CallOption) (grpc.ClientStreamingClient[testproto.Msg, testproto.Msg], error)) *MockTestServiceClient_ClientStream_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ServerStream provides a mock function with given fields: ctx, in, opts
-func (_m *MockTestServiceClient) ServerStream(ctx context.Context, in *testproto.Msg, opts ...grpc.CallOption) (testproto.TestService_ServerStreamClient, error) {
+func (_m *MockTestServiceClient) ServerStream(ctx context.Context, in *testproto.Msg, opts ...grpc.CallOption) (grpc.ServerStreamingClient[testproto.Msg], error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -186,16 +186,16 @@ func (_m *MockTestServiceClient) ServerStream(ctx context.Context, in *testproto
 		panic("no return value specified for ServerStream")
 	}
 
-	var r0 testproto.TestService_ServerStreamClient
+	var r0 grpc.ServerStreamingClient[testproto.Msg]
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *testproto.Msg, ...grpc.CallOption) (testproto.TestService_ServerStreamClient, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *testproto.Msg, ...grpc.CallOption) (grpc.ServerStreamingClient[testproto.Msg], error)); ok {
 		return rf(ctx, in, opts...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *testproto.Msg, ...grpc.CallOption) testproto.TestService_ServerStreamClient); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *testproto.Msg, ...grpc.CallOption) grpc.ServerStreamingClient[testproto.Msg]); ok {
 		r0 = rf(ctx, in, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(testproto.TestService_ServerStreamClient)
+			r0 = ret.Get(0).(grpc.ServerStreamingClient[testproto.Msg])
 		}
 	}
 
@@ -235,18 +235,18 @@ func (_c *MockTestServiceClient_ServerStream_Call) Run(run func(ctx context.Cont
 	return _c
 }
 
-func (_c *MockTestServiceClient_ServerStream_Call) Return(_a0 testproto.TestService_ServerStreamClient, _a1 error) *MockTestServiceClient_ServerStream_Call {
+func (_c *MockTestServiceClient_ServerStream_Call) Return(_a0 grpc.ServerStreamingClient[testproto.Msg], _a1 error) *MockTestServiceClient_ServerStream_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockTestServiceClient_ServerStream_Call) RunAndReturn(run func(context.Context, *testproto.Msg, ...grpc.CallOption) (testproto.TestService_ServerStreamClient, error)) *MockTestServiceClient_ServerStream_Call {
+func (_c *MockTestServiceClient_ServerStream_Call) RunAndReturn(run func(context.Context, *testproto.Msg, ...grpc.CallOption) (grpc.ServerStreamingClient[testproto.Msg], error)) *MockTestServiceClient_ServerStream_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ServerStreamThatSleeps provides a mock function with given fields: ctx, in, opts
-func (_m *MockTestServiceClient) ServerStreamThatSleeps(ctx context.Context, in *testproto.Msg, opts ...grpc.CallOption) (testproto.TestService_ServerStreamThatSleepsClient, error) {
+func (_m *MockTestServiceClient) ServerStreamThatSleeps(ctx context.Context, in *testproto.Msg, opts ...grpc.CallOption) (grpc.ServerStreamingClient[testproto.Msg], error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -260,16 +260,16 @@ func (_m *MockTestServiceClient) ServerStreamThatSleeps(ctx context.Context, in 
 		panic("no return value specified for ServerStreamThatSleeps")
 	}
 
-	var r0 testproto.TestService_ServerStreamThatSleepsClient
+	var r0 grpc.ServerStreamingClient[testproto.Msg]
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *testproto.Msg, ...grpc.CallOption) (testproto.TestService_ServerStreamThatSleepsClient, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *testproto.Msg, ...grpc.CallOption) (grpc.ServerStreamingClient[testproto.Msg], error)); ok {
 		return rf(ctx, in, opts...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *testproto.Msg, ...grpc.CallOption) testproto.TestService_ServerStreamThatSleepsClient); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *testproto.Msg, ...grpc.CallOption) grpc.ServerStreamingClient[testproto.Msg]); ok {
 		r0 = rf(ctx, in, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(testproto.TestService_ServerStreamThatSleepsClient)
+			r0 = ret.Get(0).(grpc.ServerStreamingClient[testproto.Msg])
 		}
 	}
 
@@ -309,12 +309,12 @@ func (_c *MockTestServiceClient_ServerStreamThatSleeps_Call) Run(run func(ctx co
 	return _c
 }
 
-func (_c *MockTestServiceClient_ServerStreamThatSleeps_Call) Return(_a0 testproto.TestService_ServerStreamThatSleepsClient, _a1 error) *MockTestServiceClient_ServerStreamThatSleeps_Call {
+func (_c *MockTestServiceClient_ServerStreamThatSleeps_Call) Return(_a0 grpc.ServerStreamingClient[testproto.Msg], _a1 error) *MockTestServiceClient_ServerStreamThatSleeps_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockTestServiceClient_ServerStreamThatSleeps_Call) RunAndReturn(run func(context.Context, *testproto.Msg, ...grpc.CallOption) (testproto.TestService_ServerStreamThatSleepsClient, error)) *MockTestServiceClient_ServerStreamThatSleeps_Call {
+func (_c *MockTestServiceClient_ServerStreamThatSleeps_Call) RunAndReturn(run func(context.Context, *testproto.Msg, ...grpc.CallOption) (grpc.ServerStreamingClient[testproto.Msg], error)) *MockTestServiceClient_ServerStreamThatSleeps_Call {
 	_c.Call.Return(run)
 	return _c
 }

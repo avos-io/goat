@@ -12,7 +12,7 @@ packages:
     config:
       dir: "gen/grpc/mocks"
       outpkg: "mocks"
-      include-regex: ".*Interceptor"
+      include-regex: ".*Interceptor|.*BidiStreamingServer"
   google.golang.org/grpc/stats: 
     config:
       dir: "gen/grpc/stats/mocks"
