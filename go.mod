@@ -2,8 +2,6 @@ module github.com/avos-io/goat
 
 go 1.21
 
-toolchain go1.22.4
-
 require (
 	github.com/coder/websocket v1.8.12
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
