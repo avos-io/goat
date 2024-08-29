@@ -240,7 +240,8 @@ func (ss *serverStream) RecvMsg(m interface{}) error {
 		return errors.Wrap(err, "RecvMsg")
 	}
 
-	buf := mem.NewBuffer(&rpc.Body.Data, nil)
+	data := rpc.GetBody().GetData()
+	buf := mem.NewBuffer(&data, nil)
 	bs := mem.BufferSlice{buf}
 
 	err = ss.codec.Unmarshal(bs, m)

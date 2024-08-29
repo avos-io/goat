@@ -205,7 +205,7 @@ func TestSendMsg(t *testing.T) {
 				return rpc.GetId() == id &&
 					rpc.GetHeader().GetMethod() == method &&
 					rpc.GetStatus().GetCode() == int32(codes.OK) &&
-					assert.Equal(t, rpc.GetBody().GetData(), bodyBytes) &&
+					assert.Equal(t, bodyBytes.Materialize(), rpc.GetBody().GetData()) &&
 					rpc.GetTrailer() == nil
 			},
 		)).Return(nil)

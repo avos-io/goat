@@ -337,7 +337,7 @@ func TestSendMsg(t *testing.T) {
 					rpc.GetHeader().GetMethod() == method &&
 					rpc.GetHeader().GetSource() == source &&
 					rpc.GetHeader().GetDestination() == destination &&
-					assert.Equal(t, mData, rpc.GetBody().GetData())
+					assert.Equal(t, mData.Materialize(), rpc.GetBody().GetData())
 			},
 		)).Return(nil)
 
