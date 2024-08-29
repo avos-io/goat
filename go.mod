@@ -1,6 +1,6 @@
 module github.com/avos-io/goat
 
-go 1.21
+go 1.22
 
 require (
 	github.com/coder/websocket v1.8.12
