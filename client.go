@@ -88,10 +88,12 @@ func (cc *ClientConn) invoke(
 	opts ...grpc.CallOption,
 ) error {
 	if len(opts) > 1 {
-		log.Panic().Msg("Invoke opts unsupported")
+		log.Panic().Msg("Invoke: opts unsupported")
 	} else if len(opts) == 1 {
-		if _, ok := opts[0].(grpc.EmptyCallOption); !ok {
-			log.Panic().Msg("Invoke opts unsupported")
+		switch opts[0].(type) {
+		case grpc.StaticMethodCallOption:
+		default:
+			log.Panic().Msg("Invoke: opts unsupported")
 		}
 	}
 
@@ -202,7 +204,9 @@ func (cc *ClientConn) newStream(
 	if len(opts) > 1 {
 		log.Panic().Msg("NewStream: opts unsupported")
 	} else if len(opts) == 1 {
-		if _, ok := opts[0].(grpc.EmptyCallOption); !ok {
+		switch opts[0].(type) {
+		case grpc.StaticMethodCallOption:
+		default:
 			log.Panic().Msg("NewStream: opts unsupported")
 		}
 	}
