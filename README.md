@@ -42,7 +42,7 @@ See [Client](#client) below on how to use a GOAT client. See [Server](#server) b
 A _transport implementation_ is one implementing this interface; two example implementations exist in this repo:
 * A simple websocket-based tranport in `NewGoatOverWebsocket()`. This allows creating a new GOAT transport given a websocket connection from the [github.com/coder/websocket](https://pkg.go.dev/github.com/coder/websocket) Golang module.
 * The unit testing code has several transport implementations, e.g. `NewGoatOverPipe()` which works over any `net.Conn` including those returned by [net.Pipe()](https://pkg.go.dev/net#Pipe).
-* An example transport over HTTP 1/1.1 in `NewGoatOverHttp()`. You probably don't want to use this, but it serves as another example of implementing a transport.le transport over HTTP 1/1.1 in `NewGoatOverHttp()`. You probably don't want to use this, but it serves as another example of implementing a transport.
+* An example transport over HTTP 1/1.1 in `NewGoatOverHttp()`. You probably don't want to use this, but it serves as another example of implementing a transport.
 
 ### Client and server names
 
