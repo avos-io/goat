@@ -206,7 +206,6 @@ func (cs *clientStream) SendMsg(m interface{}) error {
 		sh.HandleRPC(cs.ctx, &stats.OutPayload{
 			Client:   true,
 			Payload:  m,
-			Data:     body,
 			Length:   len(body),
 			SentTime: time.Now(),
 		})
@@ -248,7 +247,6 @@ func (cs *clientStream) RecvMsg(m interface{}) error {
 				RecvTime: time.Now(),
 				Payload:  m,
 				Length:   len(body.GetData()),
-				Data:     body.GetData(),
 			})
 		}
 		return nil

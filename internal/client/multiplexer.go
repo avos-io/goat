@@ -29,14 +29,14 @@ type RpcMultiplexer struct {
 	streamCounter uint64
 	rErr          error
 
-	codec encoding.Codec
+	codec encoding.CodecV2
 }
 
 func NewRpcMultiplexer(rw types.RpcReadWriter) *RpcMultiplexer {
 	rm := &RpcMultiplexer{
 		rw:       rw,
 		handlers: make(map[uint64]chan *goatorepo.Rpc),
-		codec:    encoding.GetCodec(proto.Name),
+		codec:    encoding.GetCodecV2(proto.Name),
 	}
 
 	rm.ctx, rm.cancel = context.WithCancel(context.Background())

@@ -197,7 +197,6 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 	for _, sh := range ss.statsHandlers {
 		sh.HandleRPC(ss.ctx, &stats.OutPayload{
 			Payload:  m,
-			Data:     body,
 			Length:   len(body),
 			SentTime: time.Now(),
 		})
@@ -248,7 +247,6 @@ func (ss *serverStream) RecvMsg(m interface{}) error {
 				RecvTime: time.Now(),
 				Payload:  m,
 				Length:   len(rpc.GetBody().GetData()),
-				Data:     rpc.GetBody().GetData(),
 			})
 		}
 	}
