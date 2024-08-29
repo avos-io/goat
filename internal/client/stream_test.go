@@ -194,7 +194,7 @@ func TestSendMsg(t *testing.T) {
 		method := "method"
 
 		body := testproto.Msg{Value: 42}
-		bodyBytes, err := encoding.GetCodec(proto.Name).Marshal(&body)
+		bodyBytes, err := encoding.GetCodecV2(proto.Name).Marshal(&body)
 		is.NoError(err)
 
 		unblockRead := make(chan time.Time)
@@ -325,7 +325,7 @@ func TestRecvMsg(t *testing.T) {
 		rw := mocks.NewMockRpcReadWriter(t)
 
 		msg := testproto.Msg{Value: 9001}
-		msgBytes, err := encoding.GetCodec(proto.Name).Marshal(&msg)
+		msgBytes, err := encoding.GetCodecV2(proto.Name).Marshal(&msg)
 		is.NoError(err)
 
 		rpc := &goatorepo.Rpc{
@@ -334,7 +334,7 @@ func TestRecvMsg(t *testing.T) {
 				Method: "method",
 			},
 			Body: &goatorepo.Body{
-				Data: msgBytes,
+				Data: msgBytes.Materialize(),
 			},
 		}
 		tr := &goatorepo.Rpc{

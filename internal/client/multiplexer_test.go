@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
+	"google.golang.org/grpc/mem"
 	"google.golang.org/grpc/status"
 
 	goatorepo "github.com/avos-io/goat/gen/goatorepo"
@@ -45,7 +46,7 @@ func (c *testConn) Write(ctx context.Context, rpc *goatorepo.Rpc) error {
 }
 
 func makeResponse(id uint64, args interface{}) *goatorepo.Rpc {
-	codec := encoding.GetCodec(proto.Name)
+	codec := encoding.GetCodecV2(proto.Name)
 
 	body, err := codec.Marshal(args)
 	if err != nil {
@@ -54,7 +55,7 @@ func makeResponse(id uint64, args interface{}) *goatorepo.Rpc {
 
 	return &goatorepo.Rpc{
 		Id:   id,
-		Body: &goatorepo.Body{Data: body},
+		Body: &goatorepo.Body{Data: body.Materialize()},
 	}
 }
 
@@ -89,10 +90,13 @@ func TestUnaryMethodSuccess(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	codec := encoding.GetCodec(proto.Name)
+	codec := encoding.GetCodecV2(proto.Name)
+
+	buf := mem.NewBuffer(&valBytes.Data, nil)
+	bs := mem.BufferSlice{buf}
 
 	var val testproto.Msg
-	codec.Unmarshal(valBytes.GetData(), &val)
+	codec.Unmarshal(bs, &val)
 
 	assert.Equal(t, int32(42), val.Value)
 }

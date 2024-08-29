@@ -326,7 +326,7 @@ func TestSendMsg(t *testing.T) {
 		stream, err := NewServerStream(ctx, streamId, method, source, destination, rw, nil)
 		is.NoError(err)
 
-		codec := encoding.GetCodec(proto.Name)
+		codec := encoding.GetCodecV2(proto.Name)
 		m := testproto.Msg{Value: 42}
 		mData, err := codec.Marshal(&m)
 		is.NoError(err)
@@ -375,7 +375,7 @@ func TestRecvMsg(t *testing.T) {
 		stream, err := NewServerStream(ctx, streamId, method, source, destination, rw, nil)
 		is.NoError(err)
 
-		codec := encoding.GetCodec(proto.Name)
+		codec := encoding.GetCodecV2(proto.Name)
 		sent := testproto.Msg{Value: 42}
 
 		data, err := codec.Marshal(&sent)
@@ -393,7 +393,7 @@ func TestRecvMsg(t *testing.T) {
 				Message: codes.OK.String(),
 			},
 			Body: &goatorepo.Body{
-				Data: data,
+				Data: data.Materialize(),
 			},
 		}
 
@@ -418,7 +418,7 @@ func TestRecvMsg(t *testing.T) {
 		stream, err := NewServerStream(ctx, streamId, method, source, destination, rw, []stats.Handler{statsMock})
 		is.NoError(err)
 
-		codec := encoding.GetCodec(proto.Name)
+		codec := encoding.GetCodecV2(proto.Name)
 		sent := testproto.Msg{Value: 42}
 
 		_, err = codec.Marshal(&sent)

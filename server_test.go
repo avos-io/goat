@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
+	"google.golang.org/grpc/mem"
 	"google.golang.org/grpc/stats"
 
 	grpcStatsMocks "github.com/avos-io/goat/gen/grpc/stats/mocks"
@@ -710,7 +711,7 @@ func waitTimeout(t *testing.T, on chan struct{}) {
 }
 
 func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg, src, dst string) *goatorepo.Rpc {
-	codec := encoding.GetCodec(proto.Name)
+	codec := encoding.GetCodecV2(proto.Name)
 
 	body, err := codec.Marshal(msg)
 	if err != nil {
@@ -724,20 +725,23 @@ func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg, src, dst string) 
 			Source:      src,
 			Destination: dst,
 		},
-		Body: &goatorepo.Body{Data: body},
+		Body: &goatorepo.Body{Data: body.Materialize()},
 	}
 	return rpc
 }
 
 func unwrapBody(rpc *goatorepo.Rpc) *testproto.Msg {
-	codec := encoding.GetCodec(proto.Name)
+	codec := encoding.GetCodecV2(proto.Name)
 
 	if rpc.GetBody() == nil {
 		return nil
 	}
 
+	buf := mem.NewBuffer(&rpc.Body.Data, nil)
+	bs := mem.BufferSlice{buf}
+
 	var out testproto.Msg
-	err := codec.Unmarshal(rpc.Body.GetData(), &out)
+	err := codec.Unmarshal(bs, &out)
 	if err != nil {
 		panic(err)
 	}

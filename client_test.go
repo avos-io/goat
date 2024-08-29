@@ -21,13 +21,13 @@ func TestClientStatsHandler(t *testing.T) {
 
 		statsMock := grpcStatsMocks.NewMockHandler(t)
 
-		expectStatsHandleConn[*stats.ConnBegin](statsMock).Times(1) // OK
+		expectStatsHandleConn[*stats.ConnBegin](statsMock).Times(1)
 		expectStatsHandleConn[*stats.ConnEnd](statsMock).Times(1)
 
-		expectStatsHandleRPC[*stats.Begin](statsMock).Times(1) // OK
+		expectStatsHandleRPC[*stats.Begin](statsMock).Times(1)
 		expectStatsHandleRPC[*stats.InHeader](statsMock).Times(1)
 		expectStatsHandleRPC[*stats.InPayload](statsMock).Times(1)
-		expectStatsHandleRPC[*stats.End](statsMock).Times(1) // OK
+		expectStatsHandleRPC[*stats.End](statsMock).Times(1)
 		expectStatsHandleRPC[*stats.OutHeader](statsMock).Times(1)
 		expectStatsHandleRPC[*stats.OutPayload](statsMock).Times(1)
 
