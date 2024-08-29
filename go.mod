@@ -3,6 +3,7 @@ module github.com/avos-io/goat
 go 1.19
 
 require (
+	github.com/coder/websocket v1.8.12
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/jonboulle/clockwork v0.4.0
 	github.com/rs/zerolog v1.28.0
@@ -11,7 +12,6 @@ require (
 	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 	google.golang.org/grpc v1.56.3
 	google.golang.org/protobuf v1.33.0
-	nhooyr.io/websocket v1.8.10
 )
 
 require github.com/golang/protobuf v1.5.3 // indirect
