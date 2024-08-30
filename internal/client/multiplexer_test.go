@@ -10,10 +10,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/encoding"
-	"google.golang.org/grpc/encoding/proto"
-	"google.golang.org/grpc/mem"
+
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	goatorepo "github.com/avos-io/goat/gen/goatorepo"
 	"github.com/avos-io/goat/gen/mocks"
@@ -45,17 +44,15 @@ func (c *testConn) Write(ctx context.Context, rpc *goatorepo.Rpc) error {
 	return err
 }
 
-func makeResponse(id uint64, args interface{}) *goatorepo.Rpc {
-	codec := encoding.GetCodecV2(proto.Name)
-
-	body, err := codec.Marshal(args)
+func makeResponse(id uint64, args proto.Message) *goatorepo.Rpc {
+	body, err := proto.Marshal(args)
 	if err != nil {
 		panic(err)
 	}
 
 	return &goatorepo.Rpc{
 		Id:   id,
-		Body: &goatorepo.Body{Data: body.Materialize()},
+		Body: &goatorepo.Body{Data: body},
 	}
 }
 
@@ -90,13 +87,8 @@ func TestUnaryMethodSuccess(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	codec := encoding.GetCodecV2(proto.Name)
-
-	buf := mem.NewBuffer(&valBytes.Data, nil)
-	bs := mem.BufferSlice{buf}
-
 	var val testproto.Msg
-	codec.Unmarshal(bs, &val)
+	proto.Unmarshal(valBytes.Data, &val)
 
 	assert.Equal(t, int32(42), val.Value)
 }
