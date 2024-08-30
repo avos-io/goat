@@ -12,9 +12,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/encoding"
-	"google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/stats"
+	"google.golang.org/protobuf/proto"
 
 	grpcStatsMocks "github.com/avos-io/goat/gen/grpc/stats/mocks"
 
@@ -710,9 +709,7 @@ func waitTimeout(t *testing.T, on chan struct{}) {
 }
 
 func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg, src, dst string) *goatorepo.Rpc {
-	codec := encoding.GetCodec(proto.Name)
-
-	body, err := codec.Marshal(msg)
+	body, err := proto.Marshal(msg)
 	if err != nil {
 		panic(err)
 	}
@@ -730,14 +727,12 @@ func wrapRpc(id uint64, fullMethod string, msg *testproto.Msg, src, dst string) 
 }
 
 func unwrapBody(rpc *goatorepo.Rpc) *testproto.Msg {
-	codec := encoding.GetCodec(proto.Name)
-
 	if rpc.GetBody() == nil {
 		return nil
 	}
 
 	var out testproto.Msg
-	err := codec.Unmarshal(rpc.Body.GetData(), &out)
+	err := proto.Unmarshal(rpc.Body.Data, &out)
 	if err != nil {
 		panic(err)
 	}

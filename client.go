@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
+	"google.golang.org/grpc/mem"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
 )
@@ -20,7 +21,7 @@ import (
 type ClientConn struct {
 	mp *client.RpcMultiplexer
 
-	codec encoding.Codec
+	codec encoding.CodecV2
 
 	unaryInterceptor  grpc.UnaryClientInterceptor
 	streamInterceptor grpc.StreamClientInterceptor
@@ -35,7 +36,7 @@ var _ grpc.ClientConnInterface = (*ClientConn)(nil)
 func NewClientConn(conn RpcReadWriter, source, dest string, opts ...DialOption) *ClientConn {
 	cc := ClientConn{
 		mp:            client.NewRpcMultiplexer(conn),
-		codec:         encoding.GetCodec(proto.Name),
+		codec:         encoding.GetCodecV2(proto.Name),
 		sourceAddress: source,
 		destAddress:   dest,
 	}
@@ -86,8 +87,14 @@ func (cc *ClientConn) invoke(
 	reply interface{},
 	opts ...grpc.CallOption,
 ) error {
-	if len(opts) > 0 {
-		log.Panic().Msg("Invoke opts unsupported")
+	if len(opts) > 1 {
+		log.Panic().Msg("Invoke: opts unsupported")
+	} else if len(opts) == 1 {
+		switch opts[0].(type) {
+		case grpc.StaticMethodCallOption:
+		default:
+			log.Panic().Msg("Invoke: opts unsupported")
+		}
 	}
 
 	var err error
@@ -114,10 +121,10 @@ func (cc *ClientConn) invoke(
 			FullMethod: method,
 			Header:     mdHeaders,
 		})
+
 		sh.HandleRPC(ctx, &stats.OutPayload{
 			Client:   true,
 			Payload:  args,
-			Data:     body,
 			Length:   len(body),
 			SentTime: time.Now(),
 		})
@@ -133,7 +140,7 @@ func (cc *ClientConn) invoke(
 			Destination: cc.destAddress,
 		},
 		&goatorepo.Body{
-			Data: body,
+			Data: body.Materialize(),
 		},
 		cc.statsHandlers,
 	)
@@ -143,7 +150,10 @@ func (cc *ClientConn) invoke(
 		return err
 	}
 
-	err = cc.codec.Unmarshal(replyBody.GetData(), reply)
+	buf := mem.NewBuffer(&replyBody.Data, nil)
+	bs := mem.BufferSlice{buf}
+
+	err = cc.codec.Unmarshal(bs, reply)
 	if err != nil {
 		log.Error().Err(err).Msg("Invoke Unmarshal")
 	}
@@ -152,7 +162,6 @@ func (cc *ClientConn) invoke(
 		sh.HandleRPC(ctx, &stats.InPayload{
 			Client:   true,
 			Payload:  reply,
-			Data:     replyBody.GetData(),
 			Length:   len(replyBody.GetData()),
 			RecvTime: time.Now(),
 		})
@@ -192,8 +201,14 @@ func (cc *ClientConn) newStream(
 	method string,
 	opts ...grpc.CallOption,
 ) (grpc.ClientStream, error) {
-	if len(opts) > 0 {
+	if len(opts) > 1 {
 		log.Panic().Msg("NewStream: opts unsupported")
+	} else if len(opts) == 1 {
+		switch opts[0].(type) {
+		case grpc.StaticMethodCallOption:
+		default:
+			log.Panic().Msg("NewStream: opts unsupported")
+		}
 	}
 
 	id, rw, teardown, err := cc.mp.NewStreamReadWriter(ctx)

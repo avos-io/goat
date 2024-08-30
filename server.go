@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
+	"google.golang.org/grpc/mem"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
@@ -158,7 +159,7 @@ type handler struct {
 	srv *Server
 
 	rw    RpcReadWriter
-	codec encoding.Codec
+	codec encoding.CodecV2
 
 	mu      sync.Mutex // protects streams
 	streams map[uint64]streamHandler
@@ -175,7 +176,7 @@ func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
 		cancel:       cancel,
 		srv:          srv,
 		rw:           rw,
-		codec:        encoding.GetCodec(proto.Name),
+		codec:        encoding.GetCodecV2(proto.Name),
 		streams:      map[uint64]streamHandler{},
 		writeChan:    make(chan *goatorepo.Rpc),
 		unaryRpcChan: make(chan unaryRpcArgs),
@@ -320,7 +321,10 @@ func (h *handler) processUnaryRpc(
 			return nil
 		}
 
-		if err := h.codec.Unmarshal(body.GetData(), msg); err != nil {
+		buf := mem.NewBuffer(&body.Data, nil)
+		bs := mem.BufferSlice{buf}
+
+		if err := h.codec.Unmarshal(bs, msg); err != nil {
 			return status.Error(codes.InvalidArgument, err.Error())
 		}
 		for _, sh := range h.srv.statsHandlers {
@@ -328,7 +332,6 @@ func (h *handler) processUnaryRpc(
 				RecvTime: time.Now(),
 				Payload:  msg,
 				Length:   len(body.GetData()),
-				Data:     body.GetData(),
 			})
 		}
 		return nil
@@ -366,14 +369,14 @@ func (h *handler) processUnaryRpc(
 	}
 
 	var respBody *goatorepo.Body
-	var data []byte
+	var data mem.BufferSlice
 
 	if resp != nil {
 		data, err = h.codec.Marshal(resp)
 
 		if err == nil {
 			respBody = &goatorepo.Body{
-				Data: data,
+				Data: data.Materialize(),
 			}
 		}
 	}
@@ -385,7 +388,6 @@ func (h *handler) processUnaryRpc(
 		})
 		sh.HandleRPC(ctx, &stats.OutPayload{
 			Payload:  resp,
-			Data:     data,
 			Length:   len(data),
 			SentTime: time.Now(),
 		})

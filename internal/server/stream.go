@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
+	"google.golang.org/grpc/mem"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
@@ -31,7 +32,7 @@ type serverStream struct {
 	src    string
 	dst    string
 
-	codec encoding.Codec
+	codec encoding.CodecV2
 
 	rw            types.RpcReadWriter
 	statsHandlers []stats.Handler
@@ -63,7 +64,7 @@ func NewServerStream(
 		method:        method,
 		src:           src,
 		dst:           dst,
-		codec:         encoding.GetCodec(proto.Name),
+		codec:         encoding.GetCodecV2(proto.Name),
 		rw:            rw,
 		statsHandlers: statsHandlers,
 	}, nil
@@ -178,7 +179,7 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 			Destination: ss.dst,
 		},
 		Body: &goatorepo.Body{
-			Data: body,
+			Data: body.Materialize(),
 		},
 	}
 
@@ -197,7 +198,6 @@ func (ss *serverStream) SendMsg(m interface{}) error {
 	for _, sh := range ss.statsHandlers {
 		sh.HandleRPC(ss.ctx, &stats.OutPayload{
 			Payload:  m,
-			Data:     body,
 			Length:   len(body),
 			SentTime: time.Now(),
 		})
@@ -240,7 +240,11 @@ func (ss *serverStream) RecvMsg(m interface{}) error {
 		return errors.Wrap(err, "RecvMsg")
 	}
 
-	err = ss.codec.Unmarshal(rpc.GetBody().GetData(), m)
+	data := rpc.GetBody().GetData()
+	buf := mem.NewBuffer(&data, nil)
+	bs := mem.BufferSlice{buf}
+
+	err = ss.codec.Unmarshal(bs, m)
 
 	if err == nil {
 		for _, sh := range ss.statsHandlers {
@@ -248,7 +252,6 @@ func (ss *serverStream) RecvMsg(m interface{}) error {
 				RecvTime: time.Now(),
 				Payload:  m,
 				Length:   len(rpc.GetBody().GetData()),
-				Data:     rpc.GetBody().GetData(),
 			})
 		}
 	}
