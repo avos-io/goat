@@ -68,3 +68,14 @@ jobs:
           cd ../goat-es
           E2E_TEST_ADDR=ws://localhost:9043/test npm run test:integration
           kill %1
+
+      - name: Check that go modules are tidy
+        working-directory: goat
+        run: |
+          go mod tidy
+          if [[ -n $(git status --porcelain go.mod go.sum) ]]; then
+          echo "::error::Changes detected in go.mod or go.sum after 'go mod tidy'"
+          echo "::error::Please run 'go mod tidy' and commit the changes, a diff is shown below:"
+          git diff go.mod go.sum
+          exit 1
+          fi
