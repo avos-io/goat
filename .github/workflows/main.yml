@@ -74,8 +74,8 @@ jobs:
         run: |
           go mod tidy
           if [[ -n $(git status --porcelain go.mod go.sum) ]]; then
-          echo "::error::Changes detected in go.mod or go.sum after `go mod tidy`"
-          echo "::error::Please run `go mod tidy` and commit the changes, a diff is shown below:"
+          echo "::error::Changes detected in go.mod or go.sum after 'go mod tidy'"
+          echo "::error::Please run 'go mod tidy' and commit the changes, a diff is shown below:"
           git diff go.mod go.sum
           exit 1
           fi
