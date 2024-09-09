@@ -28,7 +28,7 @@ jobs:
       - name: Setup Golang with cache
         uses: magnetikonline/action-golang-cache@v3
         with:
-          go-version-file: go.mod
+          go-version-file: ./go.mod
 
       - run: go version
 
