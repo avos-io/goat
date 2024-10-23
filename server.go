@@ -154,7 +154,7 @@ type streamHandler struct {
 // handler for a specific goat.RpcReadWriter
 type handler struct {
 	ctx    context.Context
-	cancel context.CancelFunc
+	cancel context.CancelCauseFunc
 
 	srv *Server
 
@@ -169,7 +169,7 @@ type handler struct {
 }
 
 func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 
 	return &handler{
 		ctx:          ctx,
@@ -184,7 +184,7 @@ func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
 }
 
 func (h *handler) serve(clientCtx context.Context) error {
-	defer h.cancel()
+	defer h.cancel(fmt.Errorf("serve done"))
 
 	ctx := h.ctx
 
@@ -205,11 +205,9 @@ func (h *handler) serve(clientCtx context.Context) error {
 		for {
 			select {
 			case rpc := <-h.writeChan:
-				log.Info().Msgf("read from writeChan; writing to 'websocket'")
 				err := h.rw.Write(writeCtx, rpc)
 				if err != nil {
-					log.Info().Msgf("websocket write error, cancel")
-					h.cancel()
+					h.cancel(fmt.Errorf("write error: %v", err))
 				}
 			case <-writeCtx.Done():
 				return
@@ -274,7 +272,6 @@ func (h *handler) serve(clientCtx context.Context) error {
 		}
 		if sd, ok := si.streams[method]; ok {
 			if err := h.processStreamingRpc(clientCtx, si, sd, rpc); err != nil {
-				log.Warn().Msgf("processStreamingRpc: %v", err)
 				return err
 			}
 			continue
@@ -428,8 +425,6 @@ func (h *handler) processStreamingRpc(
 
 	resetStream := rpc.GetReset_() != nil && rpc.GetReset_().Type == "RST_STREAM"
 
-	log.Info().Msgf("got rpc for stream %d,body? %p trailer? %p handler? %p", rpc.Id, rpc.Body, rpc.Trailer, h.streams[rpc.Id])
-
 	if handler, ok := h.streams[rpc.Id]; ok {
 		if resetStream {
 			handler.cancel()
@@ -437,11 +432,9 @@ func (h *handler) processStreamingRpc(
 			select {
 			case handler.ch <- rpc:
 			case <-clientCtx.Done():
-				log.Info().Msgf("clientCtx done")
 				return clientCtx.Err()
 			case <-h.ctx.Done():
-				log.Info().Msgf("h.ctx done")
-				return h.ctx.Err()
+				return context.Cause(h.ctx)
 			}
 		}
 		return nil

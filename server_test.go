@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -495,16 +494,12 @@ func TestServerStream(t *testing.T) {
 				func(m *testproto.Msg, stream testproto.TestService_ServerStreamServer) {
 					defer func() { rpcDone <- struct{}{} }()
 
-					log.Info().Msg("ServerStream handler called")
-					defer func() { log.Info().Msg("ServerStream handler finished") }()
-
 					for i := 0; i < int(sent.Value); i++ {
 						err := stream.Send(&testproto.Msg{Value: int32(i)})
 						if err != nil {
 							return
 						}
 						repliesSentChan <- i
-						log.Info().Msgf("have now sent reply %d", i)
 					}
 				},
 			).
@@ -549,14 +544,11 @@ func TestServerStream(t *testing.T) {
 
 		// Now inject an error
 		conn.InjectError(fmt.Errorf("broken pipe or something"))
-		log.Info().Msg("Injected error")
 
 		// Now everything should return and clean up
 		<-rpcDone
 
-		// The actual error info (write error) is lost because the error is flowed through with
-		// context cancellation
-		is.EqualError(<-serverDone, "context canceled")
+		is.EqualError(<-serverDone, "write error: broken pipe or something")
 	})
 }
 
