@@ -552,10 +552,6 @@ func TestServerStream(t *testing.T) {
 	})
 }
 
-// Streams:
-//  - replies are sent by stream.go; SendMsg(). This handles websocket errors just fine.
-//  - resetStream() also writes to the websocket and doesn't check error
-
 func expectStatsHandleConn[StatsType stats.ConnStats](m *grpcStatsMocks.MockHandler) *grpcStatsMocks.MockHandler_HandleConn_Call {
 	return m.EXPECT().HandleConn(mock.Anything, mock.MatchedBy(func(in stats.ConnStats) bool {
 		_, ok := in.(StatsType)
