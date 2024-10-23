@@ -492,8 +492,7 @@ func TestServerStream(t *testing.T) {
 		service.EXPECT().ServerStream(mock.Anything, mock.Anything).
 			Run(
 				func(m *testproto.Msg, stream testproto.TestService_ServerStreamServer) {
-					fmt.Println("Stream handler", sent.Value)
-					defer func() { fmt.Println("Stream handler completed"); rpcDone <- struct{}{} }()
+					defer func() { rpcDone <- struct{}{} }()
 
 					for i := 0; i < int(sent.Value); i++ {
 						err := stream.Send(&testproto.Msg{Value: int32(i)})
