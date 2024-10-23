@@ -205,8 +205,11 @@ func (h *handler) serve(clientCtx context.Context) error {
 		for {
 			select {
 			case rpc := <-h.writeChan:
+				log.Info().Msgf("read from writeChan; writing to 'websocket'")
+				// TODO: handle errors
 				h.rw.Write(writeCtx, rpc)
 			case <-writeCtx.Done():
+				log.Info().Msgf("writeCtx done")
 				return
 			}
 		}
@@ -260,6 +263,7 @@ func (h *handler) serve(clientCtx context.Context) error {
 			continue
 		}
 		if md, ok := si.methods[method]; ok {
+			// TODO: make cancellable
 			h.unaryRpcChan <- unaryRpcArgs{si, md, rpc}
 			continue
 		}
@@ -416,10 +420,13 @@ func (h *handler) processStreamingRpc(
 
 	resetStream := rpc.GetReset_() != nil && rpc.GetReset_().Type == "RST_STREAM"
 
+	log.Info().Msgf("got rpc for stream %d,body? %p trailer? %p handler? %p", rpc.Id, rpc.Body, rpc.Trailer, h.streams[rpc.Id])
+
 	if handler, ok := h.streams[rpc.Id]; ok {
 		if resetStream {
 			handler.cancel()
 		} else {
+			// TODO make cancellable
 			handler.ch <- rpc
 		}
 		return nil
@@ -475,7 +482,7 @@ func (h *handler) runStream(
 ) error {
 	defer h.unregisterStream(streamId)
 
-	r := func(ctx context.Context) (*goatorepo.Rpc, error) {
+	readerFunc := func(ctx context.Context) (*goatorepo.Rpc, error) {
 		select {
 		case msg, ok := <-handler.ch:
 			if !ok {
@@ -486,7 +493,7 @@ func (h *handler) runStream(
 			return nil, ctx.Err()
 		}
 	}
-	rw := internal.NewFnReadWriter(r, func(ctx context.Context, r *goatorepo.Rpc) error {
+	writerFunc := func(ctx context.Context, r *goatorepo.Rpc) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -494,7 +501,8 @@ func (h *handler) runStream(
 			break
 		}
 		return nil
-	})
+	}
+	rw := internal.NewFnReadWriter(readerFunc, writerFunc)
 
 	defer handler.cancel()
 
@@ -574,6 +582,7 @@ func (h *handler) resetStream(rpc *goatorepo.Rpc) {
 		reset.Header.ProxyNext = rpc.Header.ProxyRecord[0 : len(rpc.Header.ProxyRecord)-1]
 	}
 
+	// XXX: error handling?
 	h.rw.Write(h.ctx, reset)
 }
 

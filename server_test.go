@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -482,11 +483,11 @@ func TestServerStream(t *testing.T) {
 
 		id := uint64(99)
 		method := testproto.TestService_ServiceDesc.ServiceName + "/ServerStream"
-		sent := testproto.Msg{Value: 10}
+		sent := testproto.Msg{Value: 5}
 
 		repliesSentChan := make(chan int, 10)
 		rpcDone := make(chan struct{}, 1)
-		serverDone := make(chan struct{}, 1)
+		serverDone := make(chan error, 1)
 
 		service := mocks.NewMockTestServiceServer(t)
 		service.EXPECT().ServerStream(mock.Anything, mock.Anything).
@@ -494,12 +495,16 @@ func TestServerStream(t *testing.T) {
 				func(m *testproto.Msg, stream testproto.TestService_ServerStreamServer) {
 					defer func() { rpcDone <- struct{}{} }()
 
+					log.Info().Msg("ServerStream handler called")
+					defer func() { log.Info().Msg("ServerStream handler finished") }()
+
 					for i := 0; i < int(sent.Value); i++ {
 						err := stream.Send(&testproto.Msg{Value: int32(i)})
 						if err != nil {
 							return
 						}
 						repliesSentChan <- i
+						log.Info().Msgf("have now sent reply %d", i)
 					}
 				},
 			).
@@ -510,8 +515,7 @@ func TestServerStream(t *testing.T) {
 		conn := testutil.NewTestConn()
 
 		go func() {
-			srv.Serve(context.Background(), conn)
-			serverDone <- struct{}{}
+			serverDone <- srv.Serve(context.Background(), conn)
 		}()
 
 		// Open stream
@@ -539,14 +543,23 @@ func TestServerStream(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 
+		// Send more messages, enough to block the input channel (handler.ch)
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
+
 		// Now inject an error
 		conn.InjectError(fmt.Errorf("broken pipe or something"))
+		log.Info().Msg("Injected error")
 
 		// Now everything should return and clean up
 		<-rpcDone
-		<-serverDone
+		is.EqualError(<-serverDone, "read error: broken pipe or something")
 	})
 }
+
+// Streams:
+//  - replies are sent by stream.go; SendMsg(). This handles websocket errors just fine.
+//  - resetStream() also writes to the websocket and doesn't check error
 
 func expectStatsHandleConn[StatsType stats.ConnStats](m *grpcStatsMocks.MockHandler) *grpcStatsMocks.MockHandler_HandleConn_Call {
 	return m.EXPECT().HandleConn(mock.Anything, mock.MatchedBy(func(in stats.ConnStats) bool {
