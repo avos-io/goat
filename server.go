@@ -198,18 +198,15 @@ func (h *handler) serve(clientCtx context.Context) error {
 		}
 	}()
 
-	writeCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	go func() {
 		for {
 			select {
 			case rpc := <-h.writeChan:
-				err := h.rw.Write(writeCtx, rpc)
+				err := h.rw.Write(h.ctx, rpc)
 				if err != nil {
 					h.cancel(fmt.Errorf("write error: %v", err))
 				}
-			case <-writeCtx.Done():
+			case <-h.ctx.Done():
 				return
 			}
 		}
