@@ -553,7 +553,10 @@ func TestServerStream(t *testing.T) {
 
 		// Now everything should return and clean up
 		<-rpcDone
-		is.EqualError(<-serverDone, "read error: broken pipe or something")
+
+		// The actual error info (write error) is lost because the error is flowed through with
+		// context cancellation
+		is.EqualError(<-serverDone, "context canceled")
 	})
 }
 

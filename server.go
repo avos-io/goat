@@ -212,7 +212,6 @@ func (h *handler) serve(clientCtx context.Context) error {
 					h.cancel()
 				}
 			case <-writeCtx.Done():
-				log.Info().Msgf("writeCtx done")
 				return
 			}
 		}
@@ -230,7 +229,6 @@ func (h *handler) serve(clientCtx context.Context) error {
 				case args := <-h.unaryRpcChan:
 					h.writeChan <- h.processUnaryRpc(clientCtx, args.info, args.md, args.rpc)
 				case <-unaryRpcCtx.Done():
-					log.Info().Msgf("unalRpcCtx done")
 					return
 				}
 			}
@@ -267,8 +265,11 @@ func (h *handler) serve(clientCtx context.Context) error {
 			continue
 		}
 		if md, ok := si.methods[method]; ok {
-			// TODO: make cancellable
-			h.unaryRpcChan <- unaryRpcArgs{si, md, rpc}
+			select {
+			case h.unaryRpcChan <- unaryRpcArgs{si, md, rpc}:
+			case <-h.ctx.Done():
+				return h.ctx.Err()
+			}
 			continue
 		}
 		if sd, ok := si.streams[method]; ok {
