@@ -154,7 +154,7 @@ type streamHandler struct {
 // handler for a specific goat.RpcReadWriter
 type handler struct {
 	ctx    context.Context
-	cancel context.CancelFunc
+	cancel context.CancelCauseFunc
 
 	srv *Server
 
@@ -169,7 +169,7 @@ type handler struct {
 }
 
 func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 
 	return &handler{
 		ctx:          ctx,
@@ -184,7 +184,7 @@ func newHandler(ctx context.Context, srv *Server, rw RpcReadWriter) *handler {
 }
 
 func (h *handler) serve(clientCtx context.Context) error {
-	defer h.cancel()
+	defer h.cancel(fmt.Errorf("serve done"))
 
 	ctx := h.ctx
 
@@ -198,15 +198,15 @@ func (h *handler) serve(clientCtx context.Context) error {
 		}
 	}()
 
-	writeCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	go func() {
 		for {
 			select {
 			case rpc := <-h.writeChan:
-				h.rw.Write(writeCtx, rpc)
-			case <-writeCtx.Done():
+				err := h.rw.Write(h.ctx, rpc)
+				if err != nil {
+					h.cancel(fmt.Errorf("write error: %v", err))
+				}
+			case <-h.ctx.Done():
 				return
 			}
 		}
@@ -260,11 +260,17 @@ func (h *handler) serve(clientCtx context.Context) error {
 			continue
 		}
 		if md, ok := si.methods[method]; ok {
-			h.unaryRpcChan <- unaryRpcArgs{si, md, rpc}
+			select {
+			case h.unaryRpcChan <- unaryRpcArgs{si, md, rpc}:
+			case <-h.ctx.Done():
+				return h.ctx.Err()
+			}
 			continue
 		}
 		if sd, ok := si.streams[method]; ok {
-			h.processStreamingRpc(clientCtx, si, sd, rpc)
+			if err := h.processStreamingRpc(clientCtx, si, sd, rpc); err != nil {
+				return err
+			}
 			continue
 		}
 		log.Warn().Msgf("Server: unhandled method, %s %s: ignoring message", service, method)
@@ -420,7 +426,13 @@ func (h *handler) processStreamingRpc(
 		if resetStream {
 			handler.cancel()
 		} else {
-			handler.ch <- rpc
+			select {
+			case handler.ch <- rpc:
+			case <-clientCtx.Done():
+				return clientCtx.Err()
+			case <-h.ctx.Done():
+				return context.Cause(h.ctx)
+			}
 		}
 		return nil
 	}
@@ -436,8 +448,7 @@ func (h *handler) processStreamingRpc(
 		// it must have an empty body. If this isn't the case, it must be because
 		// we've missed the first Rpc in the stream.
 		log.Info().Msgf("did not expect body: calling RST stream %d", rpc.Id)
-		h.resetStream(rpc)
-		return nil
+		return h.resetStream(rpc)
 	}
 
 	if rpc.GetTrailer() != nil {
@@ -449,8 +460,7 @@ func (h *handler) processStreamingRpc(
 	ctx, cancel, err := contextFromHeaders(clientCtx, rpc.GetHeader())
 	if err != nil {
 		log.Info().Msgf("invalid headers: calling RST stream %d", rpc.Id)
-		h.resetStream(rpc)
-		return nil
+		return h.resetStream(rpc)
 	}
 
 	streamId := rpc.Id
@@ -475,7 +485,7 @@ func (h *handler) runStream(
 ) error {
 	defer h.unregisterStream(streamId)
 
-	r := func(ctx context.Context) (*goatorepo.Rpc, error) {
+	readerFunc := func(ctx context.Context) (*goatorepo.Rpc, error) {
 		select {
 		case msg, ok := <-handler.ch:
 			if !ok {
@@ -486,7 +496,7 @@ func (h *handler) runStream(
 			return nil, ctx.Err()
 		}
 	}
-	rw := internal.NewFnReadWriter(r, func(ctx context.Context, r *goatorepo.Rpc) error {
+	writerFunc := func(ctx context.Context, r *goatorepo.Rpc) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -494,7 +504,8 @@ func (h *handler) runStream(
 			break
 		}
 		return nil
-	})
+	}
+	rw := internal.NewFnReadWriter(readerFunc, writerFunc)
 
 	defer handler.cancel()
 
@@ -556,7 +567,7 @@ func (h *handler) unregisterStream(id uint64) {
 
 // resetStream instructs the caller to tear down and restart the stream. We call
 // this if something has gone irrecoverably wrong in the stream.
-func (h *handler) resetStream(rpc *goatorepo.Rpc) {
+func (h *handler) resetStream(rpc *goatorepo.Rpc) error {
 	reset := &goatorepo.Rpc{
 		Id: rpc.GetId(),
 		Header: &goatorepo.RequestHeader{
@@ -574,7 +585,7 @@ func (h *handler) resetStream(rpc *goatorepo.Rpc) {
 		reset.Header.ProxyNext = rpc.Header.ProxyRecord[0 : len(rpc.Header.ProxyRecord)-1]
 	}
 
-	h.rw.Write(h.ctx, reset)
+	return h.rw.Write(h.ctx, reset)
 }
 
 // contextFromHeaders returns a new incoming context with metadata populated

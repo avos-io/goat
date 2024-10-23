@@ -473,6 +473,83 @@ func TestServerStream(t *testing.T) {
 		}
 		<-serverDone
 	})
+
+	t.Run("Handle HOL blocking and cleanup on write error", func(t *testing.T) {
+		is := require.New(t)
+
+		srv := NewServer("s0")
+		defer srv.Stop()
+
+		id := uint64(99)
+		method := testproto.TestService_ServiceDesc.ServiceName + "/ServerStream"
+		sent := testproto.Msg{Value: 5}
+
+		repliesSentChan := make(chan int, 10)
+		rpcDone := make(chan struct{}, 1)
+		serverDone := make(chan error, 1)
+
+		service := mocks.NewMockTestServiceServer(t)
+		service.EXPECT().ServerStream(mock.Anything, mock.Anything).
+			Run(
+				func(m *testproto.Msg, stream testproto.TestService_ServerStreamServer) {
+					defer func() { rpcDone <- struct{}{} }()
+
+					for i := 0; i < int(sent.Value); i++ {
+						err := stream.Send(&testproto.Msg{Value: int32(i)})
+						if err != nil {
+							return
+						}
+						repliesSentChan <- i
+					}
+				},
+			).
+			Return(nil)
+
+		testproto.RegisterTestServiceServer(srv, service)
+
+		conn := testutil.NewTestConn()
+
+		go func() {
+			serverDone <- srv.Serve(context.Background(), conn)
+		}()
+
+		// Open stream
+		conn.ReadChan <- testutil.ReadReturn{
+			Rpc: &goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      "c0",
+					Destination: "s0",
+				},
+			},
+			Err: nil,
+		}
+
+		// SendMsg
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
+
+		// The server stream handler will now end up blocking on writing to the "conn". Let's just
+		// poll until we're definitely in this state
+		// First, check a single reply has definitely been sent, filling the reply channel
+		is.Equal(0, <-repliesSentChan)
+		// Then, check that the server is stuck waiting on a write
+		for conn.CurrentWriters() != 1 {
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		// Send more messages, enough to block the input channel (handler.ch)
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
+		conn.ReadChan <- testutil.ReadReturn{Rpc: wrapRpc(id, method, &sent, "c0", "s0"), Err: nil}
+
+		// Now inject an error
+		conn.InjectError(fmt.Errorf("broken pipe or something"))
+
+		// Now everything should return and clean up
+		<-rpcDone
+
+		is.EqualError(<-serverDone, "write error: broken pipe or something")
+	})
 }
 
 func expectStatsHandleConn[StatsType stats.ConnStats](m *grpcStatsMocks.MockHandler) *grpcStatsMocks.MockHandler_HandleConn_Call {
