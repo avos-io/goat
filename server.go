@@ -206,8 +206,11 @@ func (h *handler) serve(clientCtx context.Context) error {
 			select {
 			case rpc := <-h.writeChan:
 				log.Info().Msgf("read from writeChan; writing to 'websocket'")
-				// TODO: handle errors
-				h.rw.Write(writeCtx, rpc)
+				err := h.rw.Write(writeCtx, rpc)
+				if err != nil {
+					log.Info().Msgf("websocket write error, cancel")
+					h.cancel()
+				}
 			case <-writeCtx.Done():
 				log.Info().Msgf("writeCtx done")
 				return
@@ -227,6 +230,7 @@ func (h *handler) serve(clientCtx context.Context) error {
 				case args := <-h.unaryRpcChan:
 					h.writeChan <- h.processUnaryRpc(clientCtx, args.info, args.md, args.rpc)
 				case <-unaryRpcCtx.Done():
+					log.Info().Msgf("unalRpcCtx done")
 					return
 				}
 			}
@@ -268,7 +272,10 @@ func (h *handler) serve(clientCtx context.Context) error {
 			continue
 		}
 		if sd, ok := si.streams[method]; ok {
-			h.processStreamingRpc(clientCtx, si, sd, rpc)
+			if err := h.processStreamingRpc(clientCtx, si, sd, rpc); err != nil {
+				log.Warn().Msgf("processStreamingRpc: %v", err)
+				return err
+			}
 			continue
 		}
 		log.Warn().Msgf("Server: unhandled method, %s %s: ignoring message", service, method)
@@ -426,8 +433,15 @@ func (h *handler) processStreamingRpc(
 		if resetStream {
 			handler.cancel()
 		} else {
-			// TODO make cancellable
-			handler.ch <- rpc
+			select {
+			case handler.ch <- rpc:
+			case <-clientCtx.Done():
+				log.Info().Msgf("clientCtx done")
+				return clientCtx.Err()
+			case <-h.ctx.Done():
+				log.Info().Msgf("h.ctx done")
+				return h.ctx.Err()
+			}
 		}
 		return nil
 	}
@@ -443,8 +457,7 @@ func (h *handler) processStreamingRpc(
 		// it must have an empty body. If this isn't the case, it must be because
 		// we've missed the first Rpc in the stream.
 		log.Info().Msgf("did not expect body: calling RST stream %d", rpc.Id)
-		h.resetStream(rpc)
-		return nil
+		return h.resetStream(rpc)
 	}
 
 	if rpc.GetTrailer() != nil {
@@ -456,8 +469,7 @@ func (h *handler) processStreamingRpc(
 	ctx, cancel, err := contextFromHeaders(clientCtx, rpc.GetHeader())
 	if err != nil {
 		log.Info().Msgf("invalid headers: calling RST stream %d", rpc.Id)
-		h.resetStream(rpc)
-		return nil
+		return h.resetStream(rpc)
 	}
 
 	streamId := rpc.Id
@@ -564,7 +576,7 @@ func (h *handler) unregisterStream(id uint64) {
 
 // resetStream instructs the caller to tear down and restart the stream. We call
 // this if something has gone irrecoverably wrong in the stream.
-func (h *handler) resetStream(rpc *goatorepo.Rpc) {
+func (h *handler) resetStream(rpc *goatorepo.Rpc) error {
 	reset := &goatorepo.Rpc{
 		Id: rpc.GetId(),
 		Header: &goatorepo.RequestHeader{
@@ -583,7 +595,7 @@ func (h *handler) resetStream(rpc *goatorepo.Rpc) {
 	}
 
 	// XXX: error handling?
-	h.rw.Write(h.ctx, reset)
+	return h.rw.Write(h.ctx, reset)
 }
 
 // contextFromHeaders returns a new incoming context with metadata populated
