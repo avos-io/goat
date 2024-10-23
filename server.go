@@ -588,7 +588,6 @@ func (h *handler) resetStream(rpc *goatorepo.Rpc) error {
 		reset.Header.ProxyNext = rpc.Header.ProxyRecord[0 : len(rpc.Header.ProxyRecord)-1]
 	}
 
-	// XXX: error handling?
 	return h.rw.Write(h.ctx, reset)
 }
 
