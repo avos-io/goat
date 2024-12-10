@@ -50,7 +50,7 @@ type clientStream struct {
 		trailer   *goatorepo.Trailer
 	}
 
-	teardown func()
+	teardown func(bool)
 
 	rCh chan *goatorepo.Body
 }
@@ -70,24 +70,46 @@ func NewStream(
 
 	ctx, cancel := context.WithCancel(ctx)
 
-	csteardown := func() {
-		teardown()
-		cancel()
-	}
-
 	cs := &clientStream{
 		ctx:           ctx,
 		id:            id,
 		method:        method,
 		codec:         encoding.GetCodecV2(proto.Name),
 		rw:            rw,
-		teardown:      csteardown,
 		rCh:           make(chan *goatorepo.Body),
 		sourceAddress: sourceAddress,
 		destAddress:   destAddress,
 		statsHandlers: statsHandlers,
 		beginTime:     beginTime,
 	}
+
+	csteardown := func(sendRst bool) {
+		teardown()
+
+		if sendRst {
+			rpc := goatorepo.Rpc{
+				Id: id,
+				Header: &goatorepo.RequestHeader{
+					Method:      method,
+					Source:      sourceAddress,
+					Destination: destAddress,
+				},
+				Reset_: &goatorepo.Reset{
+					Type: "RST_STREAM",
+				},
+			}
+
+			writeCtx, cancelWrite := context.WithDeadline(ctx, time.Now().Add(30*time.Second))
+			defer cancelWrite()
+			err := rw.Write(writeCtx, &rpc)
+			if err != nil {
+				log.Err(err).Msg("NewStream: failed to teardown")
+			}
+		}
+
+		cancel()
+	}
+	cs.teardown = csteardown
 
 	cs.ready.Add(1)
 	go cs.readLoop()
@@ -105,6 +127,13 @@ func (cs *clientStream) Header() (metadata.MD, error) {
 	defer cs.protected.Unlock()
 
 	return cs.header, cs.protected.headerErr
+}
+
+func (cs *clientStream) getTrailer() *goatorepo.Trailer {
+	cs.protected.Lock()
+	defer cs.protected.Unlock()
+
+	return cs.protected.trailer
 }
 
 // Trailer returns the trailer metadata from the server, if there is any.
@@ -183,7 +212,7 @@ func (cs *clientStream) SendMsg(m interface{}) error {
 
 	body, err := cs.codec.Marshal(m)
 	if err != nil {
-		cs.teardown()
+		cs.teardown(false)
 		return err
 	}
 	rpc := goatorepo.Rpc{
@@ -199,7 +228,7 @@ func (cs *clientStream) SendMsg(m interface{}) error {
 	}
 	err = cs.rw.Write(cs.ctx, &rpc)
 	if err != nil {
-		cs.teardown()
+		cs.teardown(false)
 		return err
 	}
 
@@ -275,7 +304,8 @@ func (cs *clientStream) readLoop() error {
 		defer cs.protected.Unlock()
 
 		close(cs.rCh)
-		cs.teardown()
+		sendRst := trailer == nil
+		cs.teardown(sendRst)
 
 		cs.protected.done = true
 		cs.protected.rErr = rErr
