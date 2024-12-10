@@ -59,6 +59,7 @@ var _ grpc.ClientStream = (*clientStream)(nil)
 
 func NewStream(
 	ctx context.Context,
+	mp *RpcMultiplexer,
 	id uint64,
 	method string,
 	rw types.RpcReadWriter,
@@ -99,7 +100,8 @@ func NewStream(
 				},
 			}
 
-			writeCtx, cancelWrite := context.WithDeadline(ctx, time.Now().Add(30*time.Second))
+			// mp.ctx is a hack, but I think it has the correct lifetime here
+			writeCtx, cancelWrite := context.WithDeadline(mp.ctx, time.Now().Add(30*time.Second))
 			defer cancelWrite()
 			err := rw.Write(writeCtx, &rpc)
 			if err != nil {

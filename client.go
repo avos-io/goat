@@ -269,6 +269,7 @@ func (cc *ClientConn) newStream(
 
 	return client.NewStream(
 		ctx,
+		cc.mp,
 		id,
 		method,
 		rw,
