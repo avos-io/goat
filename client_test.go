@@ -148,71 +148,68 @@ func TestClientStatsHandler(t *testing.T) {
 
 		<-done
 	})
+}
 
-	t.Run("cancel server streaming", func(t *testing.T) {
-		is := require.New(t)
+func TestClientResetStream(t *testing.T) {
+	is := require.New(t)
 
-		statsMock := grpcStatsMocks.NewMockHandler(t)
+	statsMock := grpcStatsMocks.NewMockHandler(t)
 
-		expectStatsHandleConn[*stats.ConnBegin](statsMock).Times(1)
-		expectStatsHandleConn[*stats.ConnEnd](statsMock).Times(1)
+	expectStatsHandleConn[*stats.ConnBegin](statsMock).Times(1)
+	expectStatsHandleConn[*stats.ConnEnd](statsMock).Times(1)
 
-		expectStatsHandleRPC[*stats.Begin](statsMock).Times(1)
-		//expectStatsHandleRPC[*stats.InHeader](statsMock).Times(1)
-		//expectStatsHandleRPC[*stats.InPayload](statsMock).Times(1)
-		expectStatsHandleRPC[*stats.End](statsMock).Times(1)
-		expectStatsHandleRPC[*stats.OutHeader](statsMock).Times(1)
-		expectStatsHandleRPC[*stats.OutPayload](statsMock).Times(1)
-		expectStatsHandleRPC[*stats.OutTrailer](statsMock).Times(1)
+	expectStatsHandleRPC[*stats.Begin](statsMock).Times(1)
+	expectStatsHandleRPC[*stats.End](statsMock).Times(1)
+	expectStatsHandleRPC[*stats.OutHeader](statsMock).Times(1)
+	expectStatsHandleRPC[*stats.OutPayload](statsMock).Times(1)
+	expectStatsHandleRPC[*stats.OutTrailer](statsMock).Times(1)
 
-		tagRPCCall := statsMock.EXPECT().TagRPC(mock.Anything, mock.Anything)
-		tagRPCCall.Run(func(ctx context.Context, tag *stats.RPCTagInfo) {
-			ctx2 := metadata.AppendToOutgoingContext(ctx, "from-tag-rpc", "test 1")
-			tagRPCCall.Return(ctx2)
-		}).Times(1)
-		statsMock.EXPECT().TagConn(mock.Anything, mock.Anything).Times(1).Return(context.Background())
+	tagRPCCall := statsMock.EXPECT().TagRPC(mock.Anything, mock.Anything)
+	tagRPCCall.Run(func(ctx context.Context, tag *stats.RPCTagInfo) {
+		ctx2 := metadata.AppendToOutgoingContext(ctx, "from-tag-rpc", "test 1")
+		tagRPCCall.Return(ctx2)
+	}).Times(1)
+	statsMock.EXPECT().TagConn(mock.Anything, mock.Anything).Times(1).Return(context.Background())
 
-		srv := NewServer("s0")
-		defer srv.Stop()
+	srv := NewServer("s0")
+	defer srv.Stop()
 
-		srvDoneChan := make(chan struct{})
+	srvDoneChan := make(chan struct{})
 
-		service := mocks.NewMockTestServiceServer(t)
-		service.EXPECT().ServerStream(mock.Anything, mock.Anything).Run(func(_ *testproto.Msg, ss testproto.TestService_ServerStreamServer) {
-			log.Warn().Msg("ServerStream called")
-			<-ss.Context().Done()
-			log.Warn().Msg("ServerStream done")
-			close(srvDoneChan)
-		}).Return(nil).Times(1)
+	service := mocks.NewMockTestServiceServer(t)
+	service.EXPECT().ServerStream(mock.Anything, mock.Anything).Run(func(_ *testproto.Msg, ss testproto.TestService_ServerStreamServer) {
+		log.Warn().Msg("ServerStream called")
+		<-ss.Context().Done()
+		log.Warn().Msg("ServerStream done")
+		close(srvDoneChan)
+	}).Return(nil).Times(1)
 
-		testproto.RegisterTestServiceServer(srv, service)
+	testproto.RegisterTestServiceServer(srv, service)
 
-		ps1, ps2 := net.Pipe()
-		done := make(chan struct{})
+	ps1, ps2 := net.Pipe()
+	done := make(chan struct{})
 
-		go func() {
-			srv.Serve(context.Background(), testutil.NewGoatOverPipe(ps1))
-			done <- struct{}{}
-		}()
+	go func() {
+		srv.Serve(context.Background(), testutil.NewGoatOverPipe(ps1))
+		done <- struct{}{}
+	}()
 
-		clientConn := NewClientConn(testutil.NewGoatOverPipe(ps2), "c0", "s0", WithStatsHandler(statsMock))
-		cl := testproto.NewTestServiceClient(clientConn)
+	clientConn := NewClientConn(testutil.NewGoatOverPipe(ps2), "c0", "s0", WithStatsHandler(statsMock))
+	cl := testproto.NewTestServiceClient(clientConn)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		_, err := cl.ServerStream(ctx, &testproto.Msg{Value: 42})
-		is.NoError(err)
+	ctx, cancel := context.WithCancel(context.Background())
+	_, err := cl.ServerStream(ctx, &testproto.Msg{Value: 42})
+	is.NoError(err)
 
-		log.Debug().Msg("CANCEL")
-		cancel()
+	cancel()
 
-		// Check that the server context gets cancelled
-		<-srvDoneChan
+	// Check that the server context gets cancelled
+	<-srvDoneChan
 
-		clientConn.Close()
+	clientConn.Close()
 
-		ps1.Close()
-		ps2.Close()
+	ps1.Close()
+	ps2.Close()
 
-		<-done
-	})
+	<-done
 }
