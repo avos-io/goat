@@ -129,13 +129,6 @@ func (cs *clientStream) Header() (metadata.MD, error) {
 	return cs.header, cs.protected.headerErr
 }
 
-func (cs *clientStream) getTrailer() *goatorepo.Trailer {
-	cs.protected.Lock()
-	defer cs.protected.Unlock()
-
-	return cs.protected.trailer
-}
-
 // Trailer returns the trailer metadata from the server, if there is any.
 // It must only be called after stream.CloseAndRecv has returned, or
 // stream.Recv has returned a non-nil error (including io.EOF).
