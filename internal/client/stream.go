@@ -83,7 +83,7 @@ func NewStream(
 		beginTime:     beginTime,
 	}
 
-	csteardown := func(sendRst bool) {
+	cs.teardown = func(sendRst bool) {
 		if sendRst {
 			rpc := goatorepo.Rpc{
 				Id: id,
@@ -97,18 +97,19 @@ func NewStream(
 				},
 			}
 
-			writeCtx, cancelWrite := context.WithDeadline(context.TODO(), time.Now().Add(30*time.Second))
+			writeCtx, cancelWrite := context.WithDeadline(context.Background(),
+				time.Now().Add(30*time.Second))
 			defer cancelWrite()
 			err := rw.Write(writeCtx, &rpc)
 			if err != nil {
-				log.Err(err).Msg("NewStream: failed to teardown")
+				log.Err(err).Str("method", method).
+					Msg("Failed to send RST_STREAM message on teardown")
 			}
 		}
 
 		teardown()
 		cancel()
 	}
-	cs.teardown = csteardown
 
 	cs.ready.Add(1)
 	go cs.readLoop()
