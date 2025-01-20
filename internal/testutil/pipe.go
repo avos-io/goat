@@ -47,6 +47,10 @@ func (g *goatOverPipe) Read(ctx context.Context) (*goatorepo.Rpc, error) {
 }
 
 func (g *goatOverPipe) Write(ctx context.Context, pkt *goatorepo.Rpc) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	g.writeMutex.Lock()
 	defer g.writeMutex.Unlock()
 

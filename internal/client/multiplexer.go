@@ -197,6 +197,7 @@ func (rm *RpcMultiplexer) handleResponse(rpc *goatorepo.Rpc) {
 
 	ch, ok := rm.handlers[rpc.GetId()]
 	if !ok {
+		// TODO: getting log lines from here after cancelling streams
 		log.Error().Msgf("Mux: unhandled Rpc %d", rpc.GetId())
 		return
 	}

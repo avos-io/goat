@@ -23,6 +23,15 @@ import (
 
 var errTest = errors.New("EXPECTED TEST ERROR")
 
+func expectRstStream(t *testing.T, rw *mocks.MockRpcReadWriter, id uint64) {
+	rw.EXPECT().Write(mock.Anything, mock.MatchedBy(
+		func(rpc *goatorepo.Rpc) bool {
+			return rpc.GetId() == id &&
+				rpc.GetReset_().GetType() == "RST_STREAM"
+		},
+	)).Return(nil)
+}
+
 func TestLifecycle(t *testing.T) {
 	rw := mocks.NewMockRpcReadWriter(t)
 	rw.EXPECT().Read(mock.Anything).Return(nil, errTest)
@@ -404,4 +413,29 @@ func TestRecvMsg(t *testing.T) {
 		var got testproto.Msg
 		is.Error(stream.RecvMsg(&got))
 	})
+}
+
+func TestResetStream(t *testing.T) {
+	rw := mocks.NewMockRpcReadWriter(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	rw.EXPECT().Read(mock.Anything).RunAndReturn(func(ctx context.Context) (*goatorepo.Rpc, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
+	expectRstStream(t, rw, 0)
+
+	teardownCalled := make(chan struct{})
+
+	NewStream(ctx, 0, "", rw, func() {
+		teardownCalled <- struct{}{}
+	}, "src", "dst", nil, time.Time{})
+
+	cancel()
+
+	select {
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout")
+	case <-teardownCalled:
+		return
+	}
 }
