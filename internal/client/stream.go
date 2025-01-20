@@ -84,8 +84,6 @@ func NewStream(
 	}
 
 	csteardown := func(sendRst bool) {
-		teardown()
-
 		if sendRst {
 			rpc := goatorepo.Rpc{
 				Id: id,
@@ -107,6 +105,7 @@ func NewStream(
 			}
 		}
 
+		teardown()
 		cancel()
 	}
 	cs.teardown = csteardown
@@ -297,7 +296,7 @@ func (cs *clientStream) readLoop() error {
 		defer cs.protected.Unlock()
 
 		close(cs.rCh)
-		sendRst := trailer == nil
+		sendRst := trailer == nil && cs.ctx.Err() != nil
 		cs.teardown(sendRst)
 
 		cs.protected.done = true
