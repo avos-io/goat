@@ -5,14 +5,14 @@ export GOBIN="$BINDIR"
 
 mkdir -p "${BINDIR}"
 
-go install github.com/vektra/mockery/v2@v2.45.0
-go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.2
+go install github.com/vektra/mockery/v2@v2.52.3
+go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.5
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 # go install github.com/envoyproxy/protoc-gen-validate@v0.6.7
 
 [ -f "./scripts/sha/buf.sha1sum" ] && 
     sha1sum --status --check "./scripts/sha/buf.sha1sum" 2>/dev/null ||
     (
-        curl -fsSL "https://github.com/bufbuild/buf/releases/download/v1.39.0/buf-$(uname -s)-$(uname -m)" --output "${BINDIR}/buf" &&
+        curl -fsSL "https://github.com/bufbuild/buf/releases/download/v1.50.0/buf-$(uname -s)-$(uname -m)" --output "${BINDIR}/buf" &&
         chmod +x "${BINDIR}/buf"
     )
